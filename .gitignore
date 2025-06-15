@@ -1,0 +1,41 @@
+.env
+*.png
+*.csv
+*.pdf
+*.html
+*.json
+*.txt
+*.log
+.gradio
+
+# Python cache and build artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# macOS system files
+.DS_Store
+
+# VSCode and PyCharm project settings
+.vscode/
+.idea/
+
+# Virtual environments
+venv/
+.venv/
+ENV/
+
+# Test and coverage outputs
+.pytest_cache/
+.coverage
+htmlcov/
