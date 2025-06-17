@@ -20,7 +20,7 @@ AVAILABLE_TOOLS: Dict[str, Dict[str, Any]] = {
         'description': 'Creates a Ricker wavelet',
         'keywords': ['ricker', 'wavelet', 'create', 'make', 'generate'],
         'required_params': ['frequency'],
-        'optional_params': {'dt': 0.001, 'duration': 0.256}
+        'optional_params': {'dt': 0.001, 'time_length': 256.0}
     },
     'plot_ricker': {
         'description': 'Plots a Ricker wavelet with time domain and frequency domain analysis',
@@ -31,20 +31,19 @@ AVAILABLE_TOOLS: Dict[str, Dict[str, Any]] = {
     'wedge_model': {
         'description': 'Creates a wedge model for seismic analysis with variable thickness',
         'keywords': ['wedge', 'model', 'seismic', 'thickness', 'layer', 'synthetic', 'modeling'],
-        'required_params': ['max_thickness', 'vp1', 'vp2', 'vp3', 'rho1', 'rho2', 'rho3'],
+        'required_params': ['max_thickness', 'v1', 'v2', 'v3', 'rho1', 'rho2', 'rho3'],
         'optional_params': {
-            'zunit': 'm',
+            'num_traces': 61,
+            'dt': 0.1,
+            'wavelet_freq': 30.0,
+            'wavelet_length': 256.0,
+            'phase_rot': 0.0,
             'wv_type': 'ricker',
-            'ricker_freq': 30,
-            'ormsby_freq': "",
-            'wavelet_str': "",
-            'wavelet_fname': "",
-            'phase_rot': 0,
+            'ormsby_freq': None,
             'gain': 1.0,
-            'plotpadtime': 100,
+            'plotpadtime': 50.0,
             'thickness_domain': 'depth',
-            'fig_fname': 'wedge_model.png',
-            'csv_fname': 'wedge_data.csv'
+            'zunit': 'm'
         }
     }
 }

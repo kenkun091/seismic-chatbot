@@ -618,12 +618,30 @@ def wedge_model(zunit, max_thickness, wv_type, ricker_freq, ormsby_freq, wavelet
     interface1_t = t_ref + thickness*0  # Upper interface (constant time)
     interface2_t = t_ref + thickness*2000/vp_layers[1]  # Lower interface (varies with thickness)
 
-    # Place reflection coefficients in the model
+    # Ensure model is large enough for the maximum interface time
+    max_interface_time = max(interface1_t.max(), interface2_t.max())
+    min_interface_time = min(interface1_t.min(), interface2_t.min())
+    
+    # Calculate required model size
+    required_time_range = max_interface_time - min_interface_time + 2*pad_time
+    nt = max(nt, int(round(required_time_range/dt)) + 100)  # Add some buffer
+    
+    # Recalculate t0 to ensure all interfaces fit
+    t0 = min_interface_time - pad_time
+    
+    # Reinitialize reflection coefficient model with correct size
+    rc_model = np.zeros((nt, ntraces))
+
+    # Place reflection coefficients with bounds checking
     for itr in range(ntraces):
-        # Position of upper interface reflection
-        rc_model[np.round((interface1_t[itr] - t0)/dt).astype(int), itr] = rc1
-        # Position of lower interface reflection (offset by 1 sample)
-        rc_model[np.round((interface2_t[itr] - t0)/dt).astype(int) + 1, itr] = rc2
+        idx1 = int(round((interface1_t[itr] - t0)/dt))
+        idx2 = int(round((interface2_t[itr] - t0)/dt)) + 1
+        
+        # Check bounds before assignment
+        if 0 <= idx1 < nt:
+            rc_model[idx1, itr] = rc1
+        if 0 <= idx2 < nt:
+            rc_model[idx2, itr] = rc2
 
     # Convolve reflection coefficients with wavelet to create synthetic seismic data
     data = np.apply_along_axis(lambda _t: scipy.signal.convolve(_t, wavelet, mode = 'same'), axis = 0, arr = rc_model)
@@ -741,10 +759,30 @@ def create_wedge_model(
     interface1_t = t_ref + thickness*0
     interface2_t = t_ref + thickness*2000/vp_layers[1]
 
-    # Place reflection coefficients
+    # Ensure model is large enough for the maximum interface time
+    max_interface_time = max(interface1_t.max(), interface2_t.max())
+    min_interface_time = min(interface1_t.min(), interface2_t.min())
+    
+    # Calculate required model size
+    required_time_range = max_interface_time - min_interface_time + 2*pad_time
+    nt = max(nt, int(round(required_time_range/dt)) + 100)  # Add some buffer
+    
+    # Recalculate t0 to ensure all interfaces fit
+    t0 = min_interface_time - pad_time
+    
+    # Reinitialize reflection coefficient model with correct size
+    rc_model = np.zeros((nt, num_traces))
+
+    # Place reflection coefficients with bounds checking
     for itr in range(num_traces):
-        rc_model[np.round((interface1_t[itr] - t0)/dt).astype(int), itr] = rc1
-        rc_model[np.round((interface2_t[itr] - t0)/dt).astype(int) + 1, itr] = rc2
+        idx1 = int(round((interface1_t[itr] - t0)/dt))
+        idx2 = int(round((interface2_t[itr] - t0)/dt)) + 1
+        
+        # Check bounds before assignment
+        if 0 <= idx1 < nt:
+            rc_model[idx1, itr] = rc1
+        if 0 <= idx2 < nt:
+            rc_model[idx2, itr] = rc2
 
     # Create synthetic data
     data = np.apply_along_axis(lambda _t: scipy.signal.convolve(_t, wavelet, mode='same'), axis=0, arr=rc_model)

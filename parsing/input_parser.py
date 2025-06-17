@@ -154,6 +154,32 @@ class InputParser:
         
         return frequencies
 
+    def extract_avo_parameters(self, text: str) -> Dict[str, float]:
+        """
+        Extract AVO parameters from text for forward modeling and fluid indicator analysis.
+        Returns dict with keys: vp1, vs1, rho1, vp2, vs2, rho2, angles, intercept, gradient
+        """
+        text = text.lower()
+        params = {}
+        # vp, vs, rho extraction (same as velocities/densities but for two layers)
+        for i in [1, 2]:
+            for prop in ['vp', 'vs', 'rho']:
+                match = re.search(rf'{prop}{i}\s*[=:]\s*([\d\.]+)', text)
+                if match:
+                    params[f'{prop}{i}'] = float(match.group(1))
+        # angles: angles=0,10,20 or angle=30
+        match = re.search(r'angles?\s*[=:]\s*([\d\.,\s]+)', text)
+        if match:
+            params['angles'] = [float(a) for a in re.split(r'[\s,]+', match.group(1)) if a.strip()]
+        # intercept/gradient
+        match = re.search(r'intercept\s*[=:]\s*([\d\.-]+)', text)
+        if match:
+            params['intercept'] = float(match.group(1))
+        match = re.search(r'gradient\s*[=:]\s*([\d\.-]+)', text)
+        if match:
+            params['gradient'] = float(match.group(1))
+        return params
+
     def normalize_parameters(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Normalize parameter keys to match tool requirements (e.g., map 'thickness' to 'max_thickness').
@@ -163,6 +189,9 @@ class InputParser:
             'thick': 'max_thickness',
             'max thickness': 'max_thickness',
             'maximum thickness': 'max_thickness',
+            'angle': 'angles',
+            'angles': 'angles',
+            'fluid': 'fluid_indicator',
         }
         normalized = {}
         for k, v in params.items():
@@ -175,8 +204,8 @@ class InputParser:
 
     def extract_velocities(self, text: str) -> Dict[str, float]:
         """
-        Extract velocities from text and map to vp1, vp2, vp3.
-        Supports patterns like 'velocity[2000, 2500, 3000]', 'velocities: 2000, 2500, 3000', or 'vp1=2000, vp2=2500, vp3=3000'.
+        Extract velocities from text and map to v1, v2, v3.
+        Supports patterns like 'velocity[2000, 2500, 3000]', 'velocities: 2000, 2500, 3000', or 'v1=2000, v2=2500, v3=3000'.
         """
         text = text.lower()
         velocities = {}
@@ -185,18 +214,18 @@ class InputParser:
         if match:
             vals = [float(v.strip()) for v in match.group(1).split(',') if v.strip()]
             for i, v in enumerate(vals[:3]):
-                velocities[f'vp{i+1}'] = v
+                velocities[f'v{i+1}'] = v
         # Pattern: velocities: 2000, 2500, 3000
         match = re.search(r'velocit(?:y|ies)\s*[:=]\s*([\d\s,]+)', text)
         if match and not velocities:
             vals = [float(v.strip()) for v in match.group(1).split(',') if v.strip()]
             for i, v in enumerate(vals[:3]):
-                velocities[f'vp{i+1}'] = v
-        # Pattern: vp1=2000, vp2=2500, vp3=3000
+                velocities[f'v{i+1}'] = v
+        # Pattern: v1=2000, v2=2500, v3=3000
         for i in range(1, 4):
-            match = re.search(rf'vp{i}\s*[=:]\s*(\d+\.?\d*)', text)
+            match = re.search(rf'v{i}\s*[=:]\s*(\d+\.?\d*)', text)
             if match:
-                velocities[f'vp{i}'] = float(match.group(1))
+                velocities[f'v{i}'] = float(match.group(1))
         return velocities
 
     def extract_densities(self, text: str) -> Dict[str, float]:

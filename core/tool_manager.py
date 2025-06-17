@@ -2,7 +2,8 @@ import logging
 from typing import Dict, Any, Tuple, Callable
 from config.settings import AVAILABLE_TOOLS
 from tools.ricker_tools import create_ricker_wavelet, plot_wavelet
-from tools.wedge_tools import wedge_model
+from tools.wedge_tools import create_wedge_model
+from tools.avo_tools import zoeppritz_reflectivity, shuey_reflectivity, avo_fluid_indicator
 
 logger = logging.getLogger(__name__)
 
@@ -12,9 +13,25 @@ class ToolManager:
         self.tools = {
             'make_ricker': create_ricker_wavelet,
             'plot_ricker': plot_wavelet,
-            'wedge_model': wedge_model
+            'wedge_model': create_wedge_model,
+            'zoeppritz_reflectivity': zoeppritz_reflectivity,
+            'shuey_reflectivity': shuey_reflectivity,
+            'avo_fluid_indicator': avo_fluid_indicator
         }
         self.tool_configs = AVAILABLE_TOOLS
+        # Add configs for new tools if not present
+        self.tool_configs.setdefault('zoeppritz_reflectivity', {
+            'required_params': ['vp1', 'vs1', 'rho1', 'vp2', 'vs2', 'rho2', 'angles'],
+            'optional_params': {}
+        })
+        self.tool_configs.setdefault('shuey_reflectivity', {
+            'required_params': ['vp1', 'vs1', 'rho1', 'vp2', 'vs2', 'rho2', 'angles'],
+            'optional_params': {}
+        })
+        self.tool_configs.setdefault('avo_fluid_indicator', {
+            'required_params': ['intercept', 'gradient'],
+            'optional_params': {}
+        })
 
     def validate_parameters(self, tool_name: str, params: Dict[str, Any]) -> Tuple[bool, str]:
         """
@@ -54,16 +71,24 @@ class ToolManager:
             
             # Validate velocities
             for i in range(1, 4):
-                vp = params.get(f'vp{i}')
-                if not vp or vp <= 0:
-                    return False, f"Velocity vp{i} must be positive"
-                elif vp > 6500 or vp < 1500:
-                    return False, f"Invalid vp{i}"
+                v = params.get(f'v{i}')
+                if not v or v <= 0:
+                    return False, f"Velocity v{i} must be positive"
+                elif v > 6500 or v < 1500:
+                    return False, f"Invalid v{i}"
             # Validate densities
             for i in range(1, 4):
                 rho = params.get(f'rho{i}')
                 if not rho or rho <= 0:
                     return False, f"Density rho{i} must be positive"
+        elif tool_name == 'zoeppritz_reflectivity' or tool_name == 'shuey_reflectivity':
+            for param in ['vp1', 'vs1', 'rho1', 'vp2', 'vs2', 'rho2', 'angles']:
+                if param not in params:
+                    return False, f"Missing required parameter: {param}"
+        elif tool_name == 'avo_fluid_indicator':
+            for param in ['intercept', 'gradient']:
+                if param not in params:
+                    return False, f"Missing required parameter: {param}"
         
         return True, ""
 

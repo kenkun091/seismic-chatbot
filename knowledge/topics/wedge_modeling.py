@@ -100,9 +100,9 @@ The tuning thickness is where **constructive interference** produces maximum amp
    - Units: meters or feet
 
 2. **Layer Velocities**:
-   - **Vp1**: Overburden velocity
-   - **Vp2**: Wedge layer velocity
-   - **Vp3**: Basement velocity
+   - **v1**: Overburden velocity
+   - **v2**: Wedge layer velocity
+   - **v3**: Basement velocity
    - Units: m/s or ft/s
    - Must be positive values
 
@@ -117,19 +117,19 @@ The tuning thickness is where **constructive interference** produces maximum amp
 
 1. **Wavelet Parameters**:
    - **wv_type**: 'ricker' (default) or 'ormsby'
-   - **ricker_freq**: Dominant frequency (Hz)
+   - **wavelet_freq**: Dominant frequency (Hz)
+   - **wavelet_length**: Length of the wavelet (ms)
    - **phase_rot**: Phase rotation in degrees
    - **gain**: Amplitude scaling factor
 
 2. **Output Settings**:
    - **zunit**: 'm' or 'ft' for depth units
-   - **fig_fname**: Output figure filename
-   - **csv_fname**: Output data filename
    - **plotpadtime**: Time padding for plots
 
 3. **Modeling Options**:
    - **thickness_domain**: 'depth' or 'time'
-   - **plotpadtime**: Time padding for plots
+   - **num_traces**: Number of traces in the model
+   - **dt**: Time sampling interval (ms)
 
 **Parameter Selection Guidelines:**
 
