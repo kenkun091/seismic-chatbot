@@ -2,7 +2,7 @@ import logging
 from typing import Dict, Any, Tuple, Callable
 from config.settings import AVAILABLE_TOOLS
 from tools.ricker_tools import create_ricker_wavelet, plot_wavelet
-from tools.wedge_tools import create_wedge_model
+from tools.wedge_tools import create_wedge_model, plot_wedge_model
 from tools.avo_tools import zoeppritz_reflectivity, shuey_reflectivity, avo_fluid_indicator
 
 logger = logging.getLogger(__name__)
@@ -14,6 +14,7 @@ class ToolManager:
             'make_ricker': create_ricker_wavelet,
             'plot_ricker': plot_wavelet,
             'wedge_model': create_wedge_model,
+            'plot_wedge_model': plot_wedge_model,
             'zoeppritz_reflectivity': zoeppritz_reflectivity,
             'shuey_reflectivity': shuey_reflectivity,
             'avo_fluid_indicator': avo_fluid_indicator
@@ -30,6 +31,10 @@ class ToolManager:
         })
         self.tool_configs.setdefault('avo_fluid_indicator', {
             'required_params': ['intercept', 'gradient'],
+            'optional_params': {}
+        })
+        self.tool_configs.setdefault('plot_wedge_model', {
+            'required_params': ['synthetic_data', 'parameters'],
             'optional_params': {}
         })
 

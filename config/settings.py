@@ -20,13 +20,13 @@ AVAILABLE_TOOLS: Dict[str, Dict[str, Any]] = {
         'description': 'Creates a Ricker wavelet',
         'keywords': ['ricker', 'wavelet', 'create', 'make', 'generate'],
         'required_params': ['frequency'],
-        'optional_params': {'dt': 0.001, 'time_length': 256.0}
+        'optional_params': {'dt': 0.001, 'time_length': 256}
     },
     'plot_ricker': {
         'description': 'Plots a Ricker wavelet with time domain and frequency domain analysis',
         'keywords': ['plot', 'show', 'visualize', 'display', 'graph', 'chart'],
         'required_params': ['wavelet'],
-        'optional_params': {'time': None}
+        'optional_params': {'time_array': None}
     },
     'wedge_model': {
         'description': 'Creates a wedge model for seismic analysis with variable thickness',

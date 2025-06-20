@@ -13,7 +13,7 @@ def phaserotate(trc, deg):
 
 def create_ricker_wavelet(
     frequency: float,
-    time_length: float = 256.0,
+    time_length: float = 256,
     dt: float = 0.001,
     quad: bool = False
 ) -> Tuple[np.ndarray, np.ndarray]:
@@ -22,7 +22,7 @@ def create_ricker_wavelet(
     
     Args:
         frequency: The dominant frequency in Hz
-        time_length: Total length of the wavelet in seconds (default: 256.0)
+        time_length: Total length of the wavelet in milliseconds (default: 256 ms)
         dt: Time sampling interval in seconds (default: 0.001)
         amplitude: Maximum amplitude of the wavelet
         

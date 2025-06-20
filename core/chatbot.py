@@ -171,6 +171,19 @@ Return response as JSON with this structure:
                     if last_freq:
                         parameters['frequency'] = last_freq
                         parsed_result['reasoning'] = parsed_result.get('reasoning', '') + f" Using last frequency ({last_freq} Hz) from context."
+            # Force default time_length if not explicitly in user_input
+            if 'time_length' not in parameters or not re.search(r'time[_ ]?length|duration|ms|millisecond|s|second', user_input, re.IGNORECASE):
+                parameters['time_length'] = 256
+        
+        elif tool == 'plot_ricker':
+            # If wavelet/time_array missing, use last_ricker_wavelet from context
+            last_wavelet = self.context_manager.get_context('last_ricker_wavelet')
+            if last_wavelet:
+                if 'wavelet' not in parameters:
+                    parameters['wavelet'] = last_wavelet.get('wavelet')
+                if 'time_array' not in parameters:
+                    parameters['time_array'] = last_wavelet.get('time_array')
+                parsed_result['reasoning'] = parsed_result.get('reasoning', '') + " Used last generated wavelet from context."
         
         # Normalize parameters
         parameters = self.input_parser.normalize_parameters(parameters)
@@ -302,6 +315,16 @@ Return response as JSON with this structure:
             # Decide tool with enhanced logic
             tool = self._determine_tool_from_params(params, user_input)
 
+            # If plot_ricker, use last_ricker_wavelet from context if needed
+            if tool == 'plot_ricker':
+                last_wavelet = self.context_manager.get_context('last_ricker_wavelet')
+                if last_wavelet:
+                    if 'wavelet' not in params:
+                        params['wavelet'] = last_wavelet.get('wavelet')
+                    if 'time_array' not in params:
+                        params['time_array'] = last_wavelet.get('time_array')
+                    reasoning.append("Used last generated wavelet from context.")
+
             # Check for missing required parameters
             missing_params = []
             if tool:
@@ -389,8 +412,12 @@ Return response as JSON with this structure:
             else:
                 return 'make_ricker'
         
+        # Enhanced logic for wedge model plotting
         if any(word in text for word in ['wedge', 'model', 'tuning']):
-            return 'wedge_model'
+            if any(word in text for word in ['plot', 'show', 'display', 'visualize']):
+                return 'plot_wedge_model'
+            else:
+                return 'wedge_model'
         
         if any(word in text for word in ['avo', 'reflectivity', 'zoeppritz']):
             return 'zoeppritz_reflectivity'
@@ -490,7 +517,7 @@ Return response as JSON with this structure:
                         'wavelet': result[1],
                         'frequency': parameters['frequency'],
                         'dt': parameters.get('dt', 0.001),
-                        'time_length': parameters.get('time_length', 256.0),
+                        'time_length': parameters.get('time_length', 256),
                         'amplitude': parameters.get('amplitude', 1.0)
                     })
             
@@ -502,7 +529,13 @@ Return response as JSON with this structure:
                     'synthetic_data': result[2],
                     'parameters': result[3]
                 })
-            
+                # Now, call the plotting tool
+                plot_result = self.tool_manager.execute_tool('plot_wedge_model', {
+                    'synthetic_data': result[2],
+                    'parameters': result[3]
+                })
+                return {'image_path': plot_result, 'parameters': parameters}
+
             # If result is an image path (for plot_ricker), return a special dict
             if tool_name == 'plot_ricker' and isinstance(result, str) and result.endswith('.png'):
                 return {'image_path': result, 'parameters': parameters}
@@ -540,7 +573,7 @@ Return response as JSON with this structure:
                 'plotpadtime': 50.0, 'thickness_domain': 'depth', 'zunit': 'm'
             },
             'make_ricker': {
-                'frequency': 30, 'dt': 0.001, 'time_length': 256.0
+                'frequency': 30, 'dt': 0.001, 'time_length': 256
             }
         }
         
@@ -566,7 +599,31 @@ Return response as JSON with this structure:
                         'synthetic_data': result[2],
                         'parameters': result[3]
                     })
-                
+                    
+                    # Now, call the plotting tool
+                    plot_result = self.tool_manager.execute_tool('plot_wedge_model', {
+                        'synthetic_data': result[2],
+                        'parameters': result[3]
+                    })
+                    
+                    # Return image path and success message
+                    return {
+                        'image_path': plot_result,
+                        'message': f"""Successfully executed {tool_name} using default values for missing parameters: {used_defaults}
+Full parameters used: {str(current_params)}
+The model has been created and stored in context for future reference."""
+                    }
+
+                if tool_name == 'make_ricker' and isinstance(result, tuple) and len(result) == 2:
+                    self.context_manager.update_frequency(current_params['frequency'])
+                    self.context_manager.update_context('last_ricker_wavelet', {
+                        'time_array': result[0],
+                        'wavelet': result[1],
+                        'frequency': current_params['frequency'],
+                        'dt': current_params.get('dt', 0.001),
+                        'time_length': current_params.get('time_length', 256)
+                    })
+
                 return f"""Successfully executed {tool_name} using default values for missing parameters: {used_defaults}
 
 Full parameters used: {str(current_params)}
@@ -582,14 +639,14 @@ The model has been created and stored in context for future reference."""
                 'v1': 'velocity of layer 1 (e.g., 2000 m/s)',
                 'v2': 'velocity of layer 2 (e.g., 2500 m/s)',
                 'v3': 'velocity of layer 3 (e.g., 3000 m/s)',
-                'rho1': 'density of layer 1 (e.g., 2.1 g/cc)',
+                'rho1': 'density of layer 1 (e.g., 2.3 g/cc)',
                 'rho2': 'density of layer 2 (e.g., 2.2 g/cc)',
                 'rho3': 'density of layer 3 (e.g., 2.3 g/cc)',
                 'frequency': 'wavelet frequency (e.g., 30 Hz)',
                 'wavelet_freq': 'wavelet frequency (e.g., 30 Hz)',
                 'num_traces': 'number of traces in the model (e.g., 61)',
                 'dt': 'time sampling interval (e.g., 0.1 ms)',
-                'wavelet_length': 'length of the wavelet (e.g., 500 ms)',
+                'wavelet_length': 'length of the wavelet (e.g., 512 ms)',
                 'phase_rot': 'phase rotation in degrees (e.g., 0)',
                 'wv_type': 'wavelet type (e.g., "ricker" or "ormsby")',
                 'gain': 'gain factor for display (e.g., 1.0)',

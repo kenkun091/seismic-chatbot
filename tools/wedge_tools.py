@@ -671,8 +671,36 @@ def wedge_model(zunit, max_thickness, wv_type, ricker_freq, ormsby_freq, wavelet
         )
         pickle.dump(input_date, open('save.p', 'wb'))
 
-    # Generate plots and output files
-    make_plot(zunit, data, wavelet_label, vp_layers, rho_layers, thickness, interface1_t, interface2_t, t0, nt, dt, z_min, z_max, dz, gain, plotpadtime, thickness_domain, fig_fname, csv_fname)
+    # Generate plot
+    import tempfile
+    fig_fd, fig_fname = tempfile.mkstemp(suffix=".png")
+    os.close(fig_fd)
+    
+    make_plot(
+        zunit, data, wavelet_label, vp_layers, rho_layers, thickness,
+        interface1_t, interface2_t, t0, nt, dt, z_min, z_max, dz, gain,
+        plotpadtime, thickness_domain, fig_fname, ''
+    )
+
+    return t, rc_model, data, {
+        'max_thickness': max_thickness,
+        'v1': vp1, 'v2': vp2, 'v3': vp3,
+        'rho1': rho1, 'rho2': rho2, 'rho3': rho3,
+        'rc1': rc1, 'rc2': rc2,
+        'wavelet_freq': ricker_freq if wv_type == 'ricker' else float(ormsby_freq.split(',')[0]),
+        'dt': dt,
+        'num_traces': ntraces,
+        'wavelet_label': wavelet_label,
+        'zunit': zunit,
+        'thickness_domain': thickness_domain,
+        'interface1_t': interface1_t,
+        'interface2_t': interface2_t,
+        't0': t0,
+        'nt': nt,
+        'dz': dz,
+        'gain': gain,
+        'plotpadtime': plotpadtime
+    }, fig_fname
 
 def create_wedge_model(
     max_thickness: float,
@@ -685,7 +713,7 @@ def create_wedge_model(
     num_traces: int = 61,
     dt: float = 0.1,
     wavelet_freq: float = 30.0,
-    wavelet_length: float = 500.0,
+    wavelet_length: float = 256.0,
     phase_rot: float = 0.0,
     wv_type: str = 'ricker',
     ormsby_freq: Optional[str] = None,
@@ -695,136 +723,68 @@ def create_wedge_model(
     zunit: str = 'm'
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Dict]:
     """
-    Create a wedge model with specified parameters.
-    
-    Args:
-        max_thickness: Maximum thickness of the wedge in meters
-        v1, v2, v3: Velocities of the three layers (m/s)
-        rho1, rho2, rho3: Densities of the three layers (g/cc)
-        num_traces: Number of traces in the model
-        dt: Time sampling interval (ms)
-        wavelet_freq: Dominant frequency for Ricker wavelet (Hz)
-        wavelet_length: Length of the wavelet (ms)
-        phase_rot: Phase rotation in degrees
-        wv_type: Wavelet type ('ricker' or 'ormsby')
-        ormsby_freq: Comma-separated frequencies for Ormsby wavelet
-        gain: Gain factor for display
-        plotpadtime: Padding time for plots (ms)
-        thickness_domain: Domain for thickness ('depth' or 'time')
-        zunit: Unit for depth/thickness ('m' or 'ft')
-        
-    Returns:
-        Tuple of (time_array, model, synthetic_data, parameters)
+    Create a wedge model with specified parameters and return the path to the plot.
     """
-    # Create arrays for layer properties
-    vp_layers = [v1, v2, v3]
-    rho_layers = [rho1, rho2, rho3]
+    # Call the internal wedge_model function that does the work
+    time_array, model, synthetic, parameters = wedge_model(
+        zunit=zunit,
+        max_thickness=max_thickness,
+        wv_type=wv_type,
+        ricker_freq=wavelet_freq,
+        ormsby_freq=ormsby_freq,
+        wavelet_str='',
+        wavelet_fname='',
+        phase_rot=phase_rot,
+        vp1=v1,
+        vp2=v2,
+        vp3=v3,
+        rho1=rho1,
+        rho2=rho2,
+        rho3=rho3,
+        gain=gain,
+        plotpadtime=plotpadtime,
+        thickness_domain=thickness_domain,
+        fig_fname='',
+        csv_fname=''
+    )
     
-    # Calculate acoustic impedance for each layer
-    imp_layers = [vp_layers[i]*rho_layers[i] for i in range(3)]
+    return time_array, model, synthetic, parameters
 
-    # Set up model geometry
-    z_min = 0
-    z_max = max_thickness
-    dz = (z_max - z_min)/(num_traces - 1)  # Trace spacing
-
-    # Generate wavelet
-    t, wavelet, wavelet_label = gen_wavelet(dt, wv_type, wavelet_freq, ormsby_freq, None, None, phase_rot, wavelet_length)
-    wavelet_length = t[-1] - t[0] + dt
+def plot_wedge_model(
+    synthetic_data: np.ndarray,
+    parameters: Dict
+) -> str:
+    """
+    Plot a wedge model and return the path to the plot.
+    """
+    import tempfile
     
-    # Calculate padding time
-    pad_time = plotpadtime
-    model_time = 2*pad_time + 2000*(z_max - z_min)/vp_layers[1]
-    if model_time < wavelet_length:
-        pad_time += (wavelet_length - model_time)/2.0 + dt
+    fig_fd, fig_fname = tempfile.mkstemp(suffix=".png")
+    os.close(fig_fd)
     
-    # Calculate number of time samples
-    nt = int(round(2*pad_time + 2000*(z_max - z_min)/vp_layers[1]/dt))
-
-    # Initialize reflection coefficient model
-    rc_model = np.zeros((nt, num_traces))
-
-    # Calculate reflection coefficients
-    rc1 = (imp_layers[1] - imp_layers[0])/(imp_layers[1] + imp_layers[0])
-    rc2 = (imp_layers[2] - imp_layers[1])/(imp_layers[2] + imp_layers[1])
-
-    # Create thickness array
-    thickness = np.linspace(z_min, z_max, num_traces)
-
-    # Set reference time and starting time
-    t_ref = 300  # Reference time for first interface (ms)
-    t0 = t_ref - pad_time
-
-    # Calculate interface times
-    interface1_t = t_ref + thickness*0
-    interface2_t = t_ref + thickness*2000/vp_layers[1]
-
-    # Ensure model is large enough for the maximum interface time
-    max_interface_time = max(interface1_t.max(), interface2_t.max())
-    min_interface_time = min(interface1_t.min(), interface2_t.min())
+    make_plot(
+        zunit=parameters['zunit'],
+        data=synthetic_data,
+        wavelet_label=parameters['wavelet_label'],
+        vp_layers=[parameters['v1'], parameters['v2'], parameters['v3']],
+        rho_layers=[parameters['rho1'], parameters['rho2'], parameters['rho3']],
+        thickness=np.linspace(0, parameters['max_thickness'], parameters['num_traces']),
+        interface1_t=parameters['interface1_t'],
+        interface2_t=parameters['interface2_t'],
+        t0=parameters['t0'],
+        nt=parameters['nt'],
+        dt=parameters['dt'],
+        z_min=0,
+        z_max=parameters['max_thickness'],
+        dz=parameters['dz'],
+        gain=parameters['gain'],
+        plotpadtime=parameters['plotpadtime'],
+        thickness_domain=parameters['thickness_domain'],
+        fig_fname=fig_fname,
+        csv_fname=''
+    )
     
-    # Calculate required model size
-    required_time_range = max_interface_time - min_interface_time + 2*pad_time
-    nt = max(nt, int(round(required_time_range/dt)) + 100)  # Add some buffer
-    
-    # Recalculate t0 to ensure all interfaces fit
-    t0 = min_interface_time - pad_time
-    
-    # Reinitialize reflection coefficient model with correct size
-    rc_model = np.zeros((nt, num_traces))
-
-    # Place reflection coefficients with bounds checking
-    for itr in range(num_traces):
-        idx1 = int(round((interface1_t[itr] - t0)/dt))
-        idx2 = int(round((interface2_t[itr] - t0)/dt)) + 1
-        
-        # Check bounds before assignment
-        if 0 <= idx1 < nt:
-            rc_model[idx1, itr] = rc1
-        if 0 <= idx2 < nt:
-            rc_model[idx2, itr] = rc2
-
-    # Create synthetic data
-    data = np.apply_along_axis(lambda _t: scipy.signal.convolve(_t, wavelet, mode='same'), axis=0, arr=rc_model)
-
-    # Store parameters
-    parameters = {
-        'max_thickness': max_thickness,
-        'v1': v1, 'v2': v2, 'v3': v3,
-        'rho1': rho1, 'rho2': rho2, 'rho3': rho3,
-        'rc1': rc1, 'rc2': rc2,
-        'wavelet_freq': wavelet_freq,
-        'dt': dt,
-        'num_traces': num_traces,
-        'wavelet_label': wavelet_label,
-        'zunit': zunit,
-        'thickness_domain': thickness_domain
-    }
-
-    # Debug output
-    if _debug:
-        import pickle
-        debug_data = {
-            'data': data,
-            'wavelet_label': wavelet_label,
-            'vp_layers': vp_layers,
-            'rho_layers': rho_layers,
-            'thickness': thickness,
-            'interface1_t': interface1_t,
-            'interface2_t': interface2_t,
-            't0': t0,
-            'nt': nt,
-            'dt': dt,
-            'z_min': z_min,
-            'z_max': z_max,
-            'dz': dz,
-            'gain': gain,
-            'plotpadtime': plotpadtime,
-            'thickness_domain': thickness_domain
-        }
-        pickle.dump(debug_data, open('wedge_debug.p', 'wb'))
-
-    return t, rc_model, data, parameters
+    return fig_fname
 
 def analyze_wedge_model(
     time_array: np.ndarray,
