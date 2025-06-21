@@ -565,12 +565,12 @@ Return response as JSON with this structure:
         # Define default values for common parameters
         defaults = {
             'wedge_model': {
-                'v1': 2000, 'v2': 2500, 'v3': 3000,
-                'rho1': 2.1, 'rho2': 2.2, 'rho3': 2.3,
+                'v1': 2400, 'v2': 2300, 'v3': 2400,
+                'rho1': 2.4, 'rho2': 2.3, 'rho3': 2.4,
                 'wavelet_freq': 30, 'max_thickness': 100,
-                'num_traces': 61, 'dt': 0.1, 'wavelet_length': 500.0,
+                'num_traces': 61, 'dt': 0.1, 'wavelet_length': 256.0,
                 'phase_rot': 0.0, 'wv_type': 'ricker', 'gain': 1.0,
-                'plotpadtime': 50.0, 'thickness_domain': 'depth', 'zunit': 'm'
+                'plotpadtime': 120.0, 'thickness_domain': 'depth', 'zunit': 'm'
             },
             'make_ricker': {
                 'frequency': 30, 'dt': 0.001, 'time_length': 256

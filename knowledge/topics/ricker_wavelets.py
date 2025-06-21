@@ -73,7 +73,7 @@ The Ricker wavelet's shape and bandwidth are entirely determined by its dominant
   - Example: For 50 Hz → dt ≤ 0.001 s
 
 - **Duration**: Total wavelet length in seconds
-  - Typical range: 0.1 to 2.0 seconds
+  - Typical range: 0.128 to 2.0 seconds
   - Rule of thumb: duration ≥ 6/f for complete wavelet
   - Example: For 30 Hz → duration ≥ 0.2 s
 
@@ -88,6 +88,6 @@ The Ricker wavelet's shape and bandwidth are entirely determined by its dominant
 - Peak at t=0: max(w) occurs at center
 
 **Example Parameters:**
-- 30 Hz exploration: f=30, dt=0.001, duration=0.3
-- 100 Hz high-res: f=100, dt=0.0005, duration=0.1"""
+- 30 Hz exploration: f=30, dt=0.001, duration=0.256
+- 100 Hz high-res: f=100, dt=0.0005, duration=0.128"""
 }

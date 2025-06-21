@@ -503,9 +503,7 @@ def spectrum_trim_small_val(freq, amp_spec, pow_spec):
         idx -= 1
     return freq[:idx+1], amp_spec[:idx+1], pow_spec[:idx+1]
 
-def plot_wavelet(wv_type, ricker_freq, ormsby_freq, wavelet_str, wavelet_fname, phase_rot, fig_fname):
-
-    dt = 0.25
+def plot_wavelet(dt, wv_type, ricker_freq, ormsby_freq, wavelet_str, wavelet_fname, phase_rot, wavelet_length, fig_fname):
 
     t, wavelet, wavelet_label = gen_wavelet(dt, wv_type, ricker_freq, ormsby_freq, wavelet_str, wavelet_fname, phase_rot, wavelet_length)
     t, wavelet = wavelet_trim_small_val(t, wavelet)
