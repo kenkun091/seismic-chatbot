@@ -39,3 +39,8 @@ ENV/
 .pytest_cache/
 .coverage
 htmlcov/
+
+.ipynb_checkpoints/
+*.ipynb
+
+*.p

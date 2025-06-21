@@ -13,7 +13,7 @@ def phaserotate(trc, deg):
 
 def create_ricker_wavelet(
     frequency: float,
-    time_length: float = 256,
+    time_length: float = 256.,
     dt: float = 0.001,
     quad: bool = False
 ) -> Tuple[np.ndarray, np.ndarray]:
@@ -34,15 +34,21 @@ def create_ricker_wavelet(
     f0 = frequency/1000.
     om2 = (2. * np.pi *f0)**2
     a2 = 4. / om2
-    nt = int(time_length / dt + 1)
-    t = np.linspace(0, nt-1, nt)*dt -nt//2*dt
-    arg = t**2/a2
+    
+    # Convert time_length from ms to seconds to match dt
+    time_length_s = time_length / 1000.0
+    
+    nt = int(time_length_s / dt + 1)
+    t = np.linspace(0, nt-1, nt)*dt - (nt//2)*dt
+    
+    # The time t is now in seconds. To match f0 in kHz, convert time to ms for arg
+    arg = (t*1000)**2/a2
     wavelet = (1. - 2.*arg)*np.exp(-arg)
 
     if quad:
-        trc = phaserotate(trc, -90.)
+        wavelet = phaserotate(wavelet, -90.)
 
-    return t, wavelet
+    return t*1000, wavelet
 
 def analyze_wavelet(
     time_array: np.ndarray,

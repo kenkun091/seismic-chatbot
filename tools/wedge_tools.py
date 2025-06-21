@@ -162,10 +162,11 @@ def choose_pick_mode(data, interface_t, halfwin, t0, dt):
 
     for i in range(ntraces-last_n, ntraces):
         iwin_end = int(round((interface_t[i] + halfwin-t0)/dt))
-        data_ = data[:i]/np.max(np.abs(data[:iwin_end,i]))
+        data_ = data[:, i]/np.max(np.abs(data[:iwin_end, i]))
         idx = int(round((interface_t[i]-t0)/dt))
-
-        avg_amp += data_[idx]
+        
+        if 0 <= idx < len(data_):
+            avg_amp += data_[idx]
 
     avg_amp /= last_n
 
@@ -311,7 +312,7 @@ def make_plot(zunit, data, wavelet_label, vp_layers, rho_layers, thickness, \
     layer_labels = []
 
     for i in range(3):
-        layer_labels.append('Layer %d\n%V_P$=%.2f %s/s\n$\\rho$=%.2f $g/cc$' % (i+1, vp_layers[i], zunit, rho_layers[i]))
+        layer_labels.append('Layer %d\n$V_P$=%.2f %s/s\n$\\rho$=%.2f $g/cc$' % (i+1, vp_layers[i], zunit, rho_layers[i]))
 
     ax0.plot(thickness, interface1_t, color = 'blue', lw=1.5)
     ax0.plot(thickness, interface2_t, color = 'red', lw=1.5)
@@ -397,7 +398,7 @@ def make_plot(zunit, data, wavelet_label, vp_layers, rho_layers, thickness, \
     ax3_color = 'magenta'
     ax3.plot(thickness, thickness_true, color = ax3_color, lw = 0.5, linestyle = '--')
     ax3.plot(thickness, thickness_apparent_t if thickness_domain == 'time' else
-                thickness_apprent_z, color = ax3_color)
+                thickness_apparent_z, color = ax3_color)
     ax3.tick_params(top = True)
     ax3.tick_params(axis = 'y', labelcolor = ax3_color)
     min_thickness_txt = 'minimum apparent thickness:\n%.1f %s (%.1f ms)' % (thickness_apparent_z.min(), zunit, thickness_apparent_t.min())
@@ -413,7 +414,7 @@ def make_plot(zunit, data, wavelet_label, vp_layers, rho_layers, thickness, \
     plt.close()
 
     if csv_fname:
-        curves = np.vstack((thickness, amp_picks, thickness_apprent_t, thickness_apprent_z)).T
+        curves = np.vstack((thickness, amp_picks, thickness_apparent_t, thickness_apparent_z)).T
         header = ('True_Thickness_%s, Upper_Interface_Amplitude, Apparent_Thickness_ms, Apparent_Thickness_%s' % (zunit, zunit))
         np.savetxt(csv_fname, curves, fmt = '%g',delimiter = ',', header = header, comments = '')
 
@@ -468,7 +469,7 @@ def gen_wavelet(dt, wv_type, ricker_freq, ormsby_freq, wavelet_str, wavelet_fnam
             wavelet_label += ' (zero phase)'
 
         else:
-            wavelet_label += ' with $%.0f^\circ$ phase rotation' % phase_rot
+            wavelet_label += ' with $%.0f^\\circ$ phase rotation' % phase_rot
 
     return t, wavelet, wavelet_label
 
@@ -503,12 +504,7 @@ def spectrum_trim_small_val(freq, amp_spec, pow_spec):
     return freq[:idx+1], amp_spec[:idx+1], pow_spec[:idx+1]
 
 def plot_wavelet(wv_type, ricker_freq, ormsby_freq, wavelet_str, wavelet_fname, phase_rot, fig_fname):
-    # Adjust wavelet_length based on frequency to prevent array indexing errors
-    # Higher frequencies need more samples
-    if wv_type == 'ricker' and ricker_freq > 20:
-        wavelet_length = 3000  # Increase length for higher frequencies
-    else:
-        wavelet_length = 1000
+
     dt = 0.25
 
     t, wavelet, wavelet_label = gen_wavelet(dt, wv_type, ricker_freq, ormsby_freq, wavelet_str, wavelet_fname, phase_rot, wavelet_length)
@@ -586,7 +582,7 @@ def wedge_model(zunit, max_thickness, wv_type, ricker_freq, ormsby_freq, wavelet
     dt = 0.1  # ms
 
     # Generate wavelet based on specified parameters
-    t, wavelet, wavelet_label = gen_wavelet(dt, wv_type, ricker_freq, ormsby_freq, wavelet_str, wavelet_fname, phase_rot)
+    t, wavelet, wavelet_label = gen_wavelet(dt, wv_type, ricker_freq, ormsby_freq, wavelet_str, wavelet_fname, phase_rot, wavelet_length=256.0)
     wavelet_length = t[-1] - t[0] + dt
     
     # Calculate padding time to ensure model can fit the wavelet
@@ -726,7 +722,7 @@ def create_wedge_model(
     Create a wedge model with specified parameters and return the path to the plot.
     """
     # Call the internal wedge_model function that does the work
-    time_array, model, synthetic, parameters = wedge_model(
+    time_array, model, synthetic, parameters, _ = wedge_model(
         zunit=zunit,
         max_thickness=max_thickness,
         wv_type=wv_type,

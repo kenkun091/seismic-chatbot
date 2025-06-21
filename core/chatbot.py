@@ -172,7 +172,7 @@ Return response as JSON with this structure:
                         parameters['frequency'] = last_freq
                         parsed_result['reasoning'] = parsed_result.get('reasoning', '') + f" Using last frequency ({last_freq} Hz) from context."
             # Force default time_length if not explicitly in user_input
-            if 'time_length' not in parameters or not re.search(r'time[_ ]?length|duration|ms|millisecond|s|second', user_input, re.IGNORECASE):
+            if 'time_length' not in parameters or not re.search(r'time[_ ]?length|duration|ms|millisecond', user_input, re.IGNORECASE):
                 parameters['time_length'] = 256
         
         elif tool == 'plot_ricker':
