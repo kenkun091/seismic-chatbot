@@ -71,3 +71,9 @@ class ContextManager:
         self.conversation_context.clear()
         self.last_frequency = None
         self.error_count = 0
+
+    def set_context(self, key: str, value: Any) -> None:
+        """
+        Alias for update_context for compatibility.
+        """
+        self.update_context(key, value)

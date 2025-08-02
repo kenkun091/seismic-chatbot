@@ -66,7 +66,7 @@ class SeismicChatBot:
    - "unclear": Intent is ambiguous
 
 2. If INTENT is "action", also determine:
-   - TOOL: Which tool to use (make_ricker, plot_ricker, wedge_model, zoeppritz_reflectivity, shuey_reflectivity, avo_fluid_indicator)
+   - TOOL: Which tool to use (make_ricker, plot_ricker, wedge_model, zoeppritz_reflectivity, shuey_reflectivity)
    - PARAMETERS: Extract specific parameters from the text
 
 **Parameter Extraction Guidelines:**
@@ -425,8 +425,7 @@ Return response as JSON with this structure:
         if any(word in text for word in ['shuey', 'approximation']):
             return 'shuey_reflectivity'
         
-        if any(word in text for word in ['fluid', 'indicator']):
-            return 'avo_fluid_indicator'
+
         
         # Infer from parameters
         if 'frequency' in params and 'max_thickness' not in params:
@@ -435,8 +434,7 @@ Return response as JSON with this structure:
             return 'wedge_model'
         elif 'vp1' in params and 'vp2' in params:
             return 'zoeppritz_reflectivity'
-        elif 'intercept' in params and 'gradient' in params:
-            return 'avo_fluid_indicator'
+
         
         return None
 

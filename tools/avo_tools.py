@@ -1,6 +1,6 @@
 # Tools for AVO analysis
-
 import numpy as np
+import matplotlib.pyplot as plt
 
 def zoeppritz_reflectivity(vp1, vs1, rho1, vp2, vs2, rho2, angles):
     """
@@ -56,21 +56,34 @@ def shuey_reflectivity(vp1, vs1, rho1, vp2, vs2, rho2, angles):
     rc = R0 + G * np.sin(angles) ** 2 + F * (np.tan(angles) ** 2 - np.sin(angles) ** 2)
     return rc
 
-def avo_fluid_indicator(intercept, gradient):
+def plot_avo_reflectivity(angles, rc, output_path=None):
     """
-    Simple fluid indicator based on AVO intercept and gradient.
+    Plot AVO reflectivity curve and return the path to the plot.
+    
     Args:
-        intercept: AVO intercept (R0)
-        gradient: AVO gradient (G)
+        angles: array-like, incident angles in degrees
+        rc: array-like, reflection coefficients
+        output_path: Optional path to save the plot. If None, creates a temporary file.
+        
     Returns:
-        str: Fluid indicator ('gas', 'brine', 'oil', or 'uncertain')
+        str: Path to the saved plot file
     """
-    # Example rule: negative intercept and large negative gradient suggests gas
-    if intercept < 0 and gradient < -0.1:
-        return 'gas'
-    elif intercept > 0 and gradient > 0:
-        return 'brine'
-    elif intercept > 0 and gradient < 0:
-        return 'oil'
-    else:
-        return 'uncertain'
+    import tempfile
+    import os
+    
+    plt.figure(figsize=(10, 6))
+    plt.plot(angles, rc, 'b-', linewidth=2, label='Reflection Coefficient')
+    plt.xlabel('Incident Angle (degrees)')
+    plt.ylabel('Reflection Coefficient')
+    plt.title('AVO Reflectivity Curve')
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    
+    if output_path is None:
+        fd, output_path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+    
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    return output_path

@@ -1,25 +1,30 @@
 import logging
+import importlib
 from typing import Dict, Any, Tuple, Callable
 from config.settings import AVAILABLE_TOOLS
+from config.tool_schemas import TOOL_SCHEMAS, TOOL_FUNCTIONS
 from tools.ricker_tools import create_ricker_wavelet, plot_wavelet
 from tools.wedge_tools import create_wedge_model, plot_wedge_model
-from tools.avo_tools import zoeppritz_reflectivity, shuey_reflectivity, avo_fluid_indicator
+from tools.avo_tools import zoeppritz_reflectivity, shuey_reflectivity, plot_avo_reflectivity
 
 logger = logging.getLogger(__name__)
 
 class ToolManager:
     def __init__(self):
         """Initialize the tool manager with available tools."""
+        # Direct function mapping for backward compatibility
         self.tools = {
             'make_ricker': create_ricker_wavelet,
             'plot_ricker': plot_wavelet,
-            'wedge_model': create_wedge_model,
-            'plot_wedge_model': plot_wedge_model,
-            'zoeppritz_reflectivity': zoeppritz_reflectivity,
-            'shuey_reflectivity': shuey_reflectivity,
-            'avo_fluid_indicator': avo_fluid_indicator
+                    'wedge_model': create_wedge_model,
+        'plot_wedge_model': plot_wedge_model,
+        'zoeppritz_reflectivity': zoeppritz_reflectivity,
+        'shuey_reflectivity': shuey_reflectivity,
+        'plot_avo_reflectivity': plot_avo_reflectivity
         }
         self.tool_configs = AVAILABLE_TOOLS
+        self.tool_schemas = {tool["name"]: tool for tool in TOOL_SCHEMAS}
+        
         # Add configs for new tools if not present
         self.tool_configs.setdefault('zoeppritz_reflectivity', {
             'required_params': ['vp1', 'vs1', 'rho1', 'vp2', 'vs2', 'rho2', 'angles'],
@@ -29,14 +34,62 @@ class ToolManager:
             'required_params': ['vp1', 'vs1', 'rho1', 'vp2', 'vs2', 'rho2', 'angles'],
             'optional_params': {}
         })
-        self.tool_configs.setdefault('avo_fluid_indicator', {
-            'required_params': ['intercept', 'gradient'],
-            'optional_params': {}
-        })
+
         self.tool_configs.setdefault('plot_wedge_model', {
             'required_params': ['synthetic_data', 'parameters'],
             'optional_params': {}
         })
+        self.tool_configs.setdefault('plot_avo_reflectivity', {
+            'required_params': ['angles', 'rc'],
+            'optional_params': {}
+        })
+
+    def get_tool_schemas(self) -> list:
+        """
+        Get the list of tool schemas for the LLM in OpenAI/DeepSeek format.
+        
+        Returns:
+            list: List of tool schemas
+        """
+        # Wrap each tool as {"type": "function", "function": {...}}
+        formatted_tools = []
+        for tool in self.tool_schemas.values():
+            formatted_tools.append({
+                "type": "function",
+                "function": {
+                    "name": tool["name"],
+                    "description": tool["description"],
+                    "parameters": tool["parameters"]
+                }
+            })
+        return formatted_tools
+
+    def process_tool_call(self, tool_name: str, tool_input: Dict[str, Any]) -> Any:
+        """
+        Process a tool call with the given parameters.
+        This is the main function for handling tool calls from the LLM.
+        
+        Args:
+            tool_name: Name of the tool to execute
+            tool_input: Dictionary of parameters for the tool
+            
+        Returns:
+            Any: The result of the tool execution
+        """
+        logger.info(f"Processing tool call: {tool_name} with input: {tool_input}")
+        
+        try:
+            # Validate parameters
+            is_valid, error_message = self.validate_parameters(tool_name, tool_input)
+            if not is_valid:
+                raise ValueError(error_message)
+            
+            # Execute the tool
+            return self.execute_tool(tool_name, tool_input)
+            
+        except Exception as e:
+            logger.error(f"Tool execution failed for {tool_name}: {e}")
+            raise
 
     def validate_parameters(self, tool_name: str, params: Dict[str, Any]) -> Tuple[bool, str]:
         """
@@ -90,10 +143,7 @@ class ToolManager:
             for param in ['vp1', 'vs1', 'rho1', 'vp2', 'vs2', 'rho2', 'angles']:
                 if param not in params:
                     return False, f"Missing required parameter: {param}"
-        elif tool_name == 'avo_fluid_indicator':
-            for param in ['intercept', 'gradient']:
-                if param not in params:
-                    return False, f"Missing required parameter: {param}"
+
         
         return True, ""
 
@@ -127,7 +177,6 @@ class ToolManager:
             # Execute the tool
             tool_func = self.tools[tool_name]
             logger.debug(f"Calling {tool_name} with parameters: {full_params}")
-            print(f"DEBUG: Calling {tool_name} with parameters: {full_params}")
             return tool_func(**full_params)
         except Exception as e:
             logger.error(f"Tool execution failed: {e}")
