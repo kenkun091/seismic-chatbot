@@ -1,17 +1,25 @@
 import logging
 from typing import Dict, Any, List, Optional
 from openai import OpenAI
-from config.settings import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, LLM_MODEL, LLM_TEMPERATURE, LLM_MAX_TOKENS
+from config.settings import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DATABRICKS_TOKEN, DATABRICKS_BASE_URL, LLM_MODEL, LLM_TEMPERATURE, LLM_MAX_TOKENS
 
 logger = logging.getLogger(__name__)
 
 class LLMClient:
     def __init__(self):
-        """Initialize the LLM client with DeepSeek configuration."""
-        self.client = OpenAI(
-            api_key=DEEPSEEK_API_KEY,
-            base_url=DEEPSEEK_BASE_URL,
-        )
+        """Initialize the LLM client with configuration for either DeepSeek or Databricks."""
+        # Check if Databricks credentials are available
+        if DATABRICKS_TOKEN and DATABRICKS_BASE_URL:
+            self.client = OpenAI(
+                api_key=DATABRICKS_TOKEN,
+                base_url=DATABRICKS_BASE_URL,
+            )
+        else:
+            # Fall back to DeepSeek configuration
+            self.client = OpenAI(
+                api_key=DEEPSEEK_API_KEY,
+                base_url=DEEPSEEK_BASE_URL,
+            )
         self.model = LLM_MODEL
         self.temperature = LLM_TEMPERATURE
         self.max_tokens = LLM_MAX_TOKENS
@@ -39,16 +47,19 @@ class LLMClient:
             openai_messages.extend(messages)
 
             response = self.client.chat.completions.create(
-                model="deepseek-chat",
+                model=self.model,
                 messages=openai_messages,
-                tools=tools
+                tools=tools,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens
             )
             message = response.choices[0].message
             # Return a dict compatible with the rest of the code
             result = {
                 "content": message.content,
                 "tool_calls": getattr(message, "tool_calls", None),
-                "stop_reason": getattr(message, "finish_reason", None)
+                "stop_reason": getattr(message, "finish_reason", None),
+                "usage": getattr(response, "usage", None)
             }
             return result
             

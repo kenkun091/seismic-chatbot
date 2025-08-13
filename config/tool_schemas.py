@@ -34,10 +34,16 @@ TOOL_SCHEMAS = [
             "properties": {
                 "wavelet": {
                     "type": "array",
+                    "items": {
+                        "type": "number"
+                    },
                     "description": "Array of wavelet amplitudes."
                 },
                 "time_array": {
                     "type": "array",
+                    "items": {
+                        "type": "number"
+                    },
                     "description": "Array of time values in milliseconds."
                 }
             },
@@ -98,6 +104,12 @@ TOOL_SCHEMAS = [
             "properties": {
                 "synthetic_data": {
                     "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "number"
+                        }
+                    },
                     "description": "Array of synthetic seismic data."
                 },
                 "parameters": {
@@ -140,6 +152,9 @@ TOOL_SCHEMAS = [
                 },
                 "angles": {
                     "type": "array",
+                    "items": {
+                        "type": "number"
+                    },
                     "description": "Array of incidence angles in degrees."
                 }
             },
@@ -178,6 +193,9 @@ TOOL_SCHEMAS = [
                 },
                 "angles": {
                     "type": "array",
+                    "items": {
+                        "type": "number"
+                    },
                     "description": "Array of incidence angles in degrees."
                 }
             },
@@ -192,10 +210,16 @@ TOOL_SCHEMAS = [
             "properties": {
                 "angles": {
                     "type": "array",
+                    "items": {
+                        "type": "number"
+                    },
                     "description": "Array of incidence angles in degrees."
                 },
                 "rc": {
                     "type": "array",
+                    "items": {
+                        "type": "number"
+                    },
                     "description": "Array of reflection coefficients."
                 }
             },

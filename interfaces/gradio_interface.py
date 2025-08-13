@@ -6,6 +6,9 @@ def create_chat_interface():
     """Create and return the Gradio chat interface using the tool use pattern."""
     seismic_bot = SeismicChatBotToolUse()
     
+    # Reset token usage when interface is created (browser refresh)
+    seismic_bot.context_manager.clear_context()
+    
     def respond(message, chat_history):
         """Process user message and generate response using tool use pattern."""
         try:
@@ -25,11 +28,16 @@ def create_chat_interface():
                 # Handle other response types
                 chat_history.append({"role": "assistant", "content": str(response)})
                 
+            # Get token usage for display
+            token_usage = seismic_bot.context_manager.get_token_usage()
+            return "", chat_history, f"Prompt: {token_usage['prompt_tokens']} | Completion: {token_usage['completion_tokens']} | Total: {token_usage['total_tokens']}"  
+                
         except Exception as e:
             error_msg = f"Error processing request: {str(e)}"
             chat_history.append({"role": "assistant", "content": error_msg})
             
-        return "", chat_history
+            # Return empty token usage on error
+            return "", chat_history, ""
     
     def copy_prompt(prompt_text):
         """Copy prompt to clipboard and return it for the textbox."""
@@ -38,8 +46,27 @@ def create_chat_interface():
     def search_examples(query):
         """Search for example prompts."""
         if not query.strip():
-            return get_random_prompts(5)
-        return search_prompts(query)
+            results = get_random_prompts(5)
+        else:
+            results = search_prompts(query)
+        
+        # Format results as HTML
+        if not results:
+            return "<p><em>No examples found. Try a different search term.</em></p>"
+        
+        html_content = "<div style='max-height: 300px; overflow-y: auto;'>"
+        for i, result in enumerate(results):
+            html_content += f"""
+            <div style='margin-bottom: 15px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9;'>
+                <h4 style='margin: 0 0 5px 0; color: #333;'>{result['title']}</h4>
+                <p style='margin: 0 0 8px 0; color: #666; font-style: italic;'>{result['description']}</p>
+                <div style='background-color: white; padding: 8px; border-radius: 3px; border: 1px solid #ccc;'>
+                    <code style='color: #333;'>{result['prompt']}</code>
+                </div>
+            </div>
+            """
+        html_content += "</div>"
+        return html_content
     
     with gr.Blocks(title="Seismic Modeling Assistant - Tool Use") as demo:
         gr.Markdown("""
@@ -75,6 +102,29 @@ def create_chat_interface():
                         container=False
                     )
                     submit = gr.Button("Send", variant="primary")
+                # Add token usage display with custom styling
+                token_usage_display = gr.Markdown(
+                    "Token Usage: 0", 
+                    elem_id="token-usage",
+                    elem_classes=["token-usage-display"]
+                )
+                
+                # Add custom CSS for token usage display
+                gr.HTML("""
+                <style>
+                .token-usage-display {
+                    background-color: #f0f7ff;
+                    border: 1px solid #cce5ff;
+                    border-radius: 5px;
+                    padding: 8px 12px;
+                    margin-top: 10px;
+                    font-size: 0.9em;
+                    color: #0366d6;
+                    font-family: monospace;
+                    text-align: center;
+                }
+                </style>
+                """)
             
             with gr.Column(scale=2):
                 # Example prompts section
@@ -89,9 +139,23 @@ def create_chat_interface():
                         scale=4
                     )
                     
-                    # Search results
+                    # Search results - initialize with some default examples
+                    default_results = get_random_prompts(3)
+                    default_html = "<div style='max-height: 300px; overflow-y: auto;'>"
+                    for result in default_results:
+                        default_html += f"""
+                        <div style='margin-bottom: 15px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9;'>
+                            <h4 style='margin: 0 0 5px 0; color: #333;'>{result['title']}</h4>
+                            <p style='margin: 0 0 8px 0; color: #666; font-style: italic;'>{result['description']}</p>
+                            <div style='background-color: white; padding: 8px; border-radius: 3px; border: 1px solid #ccc;'>
+                                <code style='color: #333;'>{result['prompt']}</code>
+                            </div>
+                        </div>
+                        """
+                    default_html += "</div>"
+                    
                     search_results = gr.HTML(
-                        value="<p><em>Search for examples or browse categories below...</em></p>",
+                        value=default_html,
                         label="Search Results"
                     )
                     
@@ -153,8 +217,8 @@ def create_chat_interface():
                 - "Calculate Zoeppritz reflectivity for gas sand"
                 """)
         
-        submit.click(respond, [msg, chat_display], [msg, chat_display])
-        msg.submit(respond, [msg, chat_display], [msg, chat_display])
+        submit.click(respond, [msg, chat_display], [msg, chat_display, token_usage_display])
+        msg.submit(respond, [msg, chat_display], [msg, chat_display, token_usage_display])
     
     return demo
 

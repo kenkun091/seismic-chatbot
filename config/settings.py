@@ -9,6 +9,10 @@ load_dotenv()
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL")
 
+# Databricks Configuration (alternative to DeepSeek)
+DATABRICKS_TOKEN = os.environ.get("DATABRICKS_TOKEN")
+DATABRICKS_BASE_URL = os.environ.get("DATABRICKS_BASE_URL")
+
 # LLM Configuration
 LLM_MODEL = "deepseek-chat"
 LLM_TEMPERATURE = 0.1

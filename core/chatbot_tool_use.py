@@ -124,6 +124,10 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
                 messages=messages
             )
             
+            # Update token usage statistics
+            if response.get("usage"):
+                self.context_manager.update_token_usage(response["usage"])
+            
             # If LLM stops because it wants to use a tool
             if response["stop_reason"] == "tool_calls" and response["tool_calls"]:
                 # Append the assistant message with tool_calls
@@ -165,6 +169,10 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
                         tools=self.tools,
                         messages=messages
                     )
+                    
+                    # Update token usage statistics
+                    if final_response.get("usage"):
+                        self.context_manager.update_token_usage(final_response["usage"])
                     messages.append({"role": "assistant", "content": final_response["content"]})
                     model_reply = self._extract_reply(final_response["content"])
                     if model_reply:
@@ -203,6 +211,10 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
             tools=self.tools,
             messages=messages
         )
+        
+        # Update token usage statistics
+        if response.get("usage"):
+            self.context_manager.update_token_usage(response["usage"])
         # If LLM wants to use a tool
         if response.get("tool_calls"):
             # Append the assistant message with tool_calls
@@ -269,6 +281,10 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
                     tools=self.tools,
                     messages=messages
                 )
+                
+                # Update token usage statistics
+                if final_response.get("usage"):
+                    self.context_manager.update_token_usage(final_response["usage"])
                 result = self._extract_reply(final_response["content"]) or final_response["content"]
                 return result
             except Exception as e:
@@ -343,4 +359,4 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
         Returns:
             List[Dict]: List of tool schemas
         """
-        return self.tools 
+        return self.tools
