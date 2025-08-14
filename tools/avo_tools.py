@@ -76,6 +76,7 @@ def plot_avo_reflectivity(angles, rc, output_path=None):
     plt.xlabel('Incident Angle (degrees)')
     plt.ylabel('Reflection Coefficient')
     plt.title('AVO Reflectivity Curve')
+    plt.ylim(-0.3,0.3)
     plt.grid(True, alpha=0.3)
     plt.legend()
     

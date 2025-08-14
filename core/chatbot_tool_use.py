@@ -1,6 +1,7 @@
 import logging
 import re
 import json
+import numpy as np
 from typing import Dict, Any, List, Optional
 from .llm_client import LLMClient
 from .tool_manager import ToolManager
@@ -274,6 +275,17 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
                         plot_result = self.tool_manager.process_tool_call("plot_wedge_model", plot_input)
                         if isinstance(plot_result, str) and plot_result.endswith(".png"):
                             return {"image_path": plot_result}
+                # --- Automatic chaining: if zoeppritz_reflectivity or shuey_reflectivity, immediately call plot_avo_reflectivity ---
+                elif tool_name in ["zoeppritz_reflectivity", "shuey_reflectivity"]:
+                    # Get the reflection coefficients and angles from the tool input
+                    if isinstance(tool_result, np.ndarray) and "angles" in tool_input:
+                        plot_input = {
+                            "angles": tool_input["angles"],
+                            "rc": tool_result
+                        }
+                        plot_result = self.tool_manager.process_tool_call("plot_avo_reflectivity", plot_input)
+                        if isinstance(plot_result, str) and plot_result.endswith(".png"):
+                            return {"image_path": plot_result}
                 # --- End automatic chaining ---
                 final_response = self.llm_client.get_completion(
                     system_prompt=self.system_prompt,
@@ -347,6 +359,16 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
                         "synthetic": synthetic,
                         "parameters": parameters,
                         "input_params": tool_input
+                    })
+                    
+            elif tool_name in ["zoeppritz_reflectivity", "shuey_reflectivity"]:
+                # Store AVO reflectivity data for reference
+                if isinstance(tool_result, np.ndarray) and "angles" in tool_input:
+                    self.context_manager.set_context("last_avo_reflectivity", {
+                        "angles": tool_input["angles"],
+                        "rc": tool_result,
+                        "method": tool_name,
+                        "parameters": tool_input
                     })
                 
         except Exception as e:
