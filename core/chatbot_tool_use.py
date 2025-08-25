@@ -286,6 +286,21 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
                         plot_result = self.tool_manager.process_tool_call("plot_avo_reflectivity", plot_input)
                         if isinstance(plot_result, str) and plot_result.endswith(".png"):
                             return {"image_path": plot_result}
+                # --- Automatic chaining: if calculate_rock_properties, immediately call plot_rock_properties ---
+                elif tool_name == "calculate_rock_properties":
+                    # Get the rock properties from the calculation
+                    if isinstance(tool_result, tuple) and len(tool_result) == 3:
+                        vp, vs, rhob = tool_result
+                        plot_input = {
+                            "phit": tool_input["phit"],
+                            "vclay": tool_input["vclay"],
+                            "vp": vp,
+                            "vs": vs,
+                            "rhob": rhob
+                        }
+                        plot_result = self.tool_manager.process_tool_call("plot_rock_properties", plot_input)
+                        if isinstance(plot_result, str) and plot_result.endswith(".png"):
+                            return {"image_path": plot_result}
                 # --- End automatic chaining ---
                 final_response = self.llm_client.get_completion(
                     system_prompt=self.system_prompt,
@@ -368,6 +383,20 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
                         "angles": tool_input["angles"],
                         "rc": tool_result,
                         "method": tool_name,
+                        "parameters": tool_input
+                    })
+                    
+            elif tool_name == "calculate_rock_properties":
+                # Store rock properties data for reference
+                if isinstance(tool_result, tuple) and len(tool_result) == 3:
+                    vp, vs, rhob = tool_result
+                    self.context_manager.set_context("last_rock_properties", {
+                        "phit": tool_input["phit"],
+                        "vclay": tool_input["vclay"],
+                        "vp": vp,
+                        "vs": vs,
+                        "rhob": rhob,
+                        "fluid_type": tool_input.get("fluid_type", "water"),
                         "parameters": tool_input
                     })
                 

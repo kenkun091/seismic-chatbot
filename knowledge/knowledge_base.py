@@ -2,6 +2,7 @@ from typing import Dict, Any, Optional
 from .topics.ricker_wavelets import RICKER_KNOWLEDGE
 from .topics.wedge_modeling import WEDGE_KNOWLEDGE
 from .topics.seismic_properties import SEISMIC_PROPERTIES_KNOWLEDGE
+from .topics.rock_physics import ROCK_PHYSICS_KNOWLEDGE
 
 class KnowledgeBase:
     def __init__(self):
@@ -9,7 +10,8 @@ class KnowledgeBase:
         self.topics = {
             'ricker': RICKER_KNOWLEDGE,
             'wedge': WEDGE_KNOWLEDGE,
-            'seismic_properties': SEISMIC_PROPERTIES_KNOWLEDGE
+            'seismic_properties': SEISMIC_PROPERTIES_KNOWLEDGE,
+            'rock_physics': ROCK_PHYSICS_KNOWLEDGE
         }
 
     def get_topic_response(self, topic: str, subtopic: Optional[str] = None) -> str:
@@ -79,4 +81,4 @@ class KnowledgeBase:
 - *"What determines seismic resolution?"*
 - *"How do I choose the right wavelet frequency?"*
 - *"Explain tuning effects in thin beds"*
-- *"What's the difference between zero-phase and minimum-phase wavelets?"*""" 
+- *"What's the difference between zero-phase and minimum-phase wavelets?"*"""

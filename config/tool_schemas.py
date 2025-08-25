@@ -5,6 +5,46 @@ These schemas define the tools available to the LLM with proper JSON structure.
 
 TOOL_SCHEMAS = [
     {
+        "name": "knowledge_rag",
+        "description": "Retrieves information from the knowledge base using RAG (Retrieval-Augmented Generation) across all topics.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The user's query about any seismic or geophysics topic."
+                },
+                "domain": {
+                    "type": "string",
+                    "description": "Optional domain to restrict search (ricker, wedge, seismic_properties, rock_physics)."
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Number of most relevant documents to retrieve (default: 3)."
+                }
+            },
+            "required": ["query"]
+        }
+    },
+    {
+        "name": "rock_physics_rag",
+        "description": "Retrieves rock physics information using RAG (Retrieval-Augmented Generation).",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The user's query about rock physics concepts."
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Number of most relevant documents to retrieve (default: 3)."
+                }
+            },
+            "required": ["query"]
+        }
+    },
+    {
         "name": "make_ricker",
         "description": "Creates a Ricker wavelet with specified frequency and time parameters.",
         "parameters": {
@@ -225,6 +265,79 @@ TOOL_SCHEMAS = [
             },
             "required": ["angles", "rc"]
         }
+    },
+    {
+        "name": "calculate_rock_properties",
+        "description": "Calculates Vp, Vs, and density (rhob) from porosity (phit) and clay volume (vclay) using empirical rock physics relationships.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "phit": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    },
+                    "description": "Porosity values (fraction, 0-1)."
+                },
+                "vclay": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    },
+                    "description": "Clay volume values (fraction, 0-1)."
+                },
+                "fluid_type": {
+                    "type": "string",
+                    "description": "Fluid type ('water', 'oil', or 'gas'). Default is 'water'."
+                }
+            },
+            "required": ["phit", "vclay"]
+        }
+    },
+    {
+        "name": "plot_rock_properties",
+        "description": "Plots calculated rock properties (Vp, Vs, density) as a function of porosity and clay volume.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "phit": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    },
+                    "description": "Porosity values (fraction, 0-1)."
+                },
+                "vclay": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    },
+                    "description": "Clay volume values (fraction, 0-1)."
+                },
+                "vp": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    },
+                    "description": "P-wave velocity values (m/s)."
+                },
+                "vs": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    },
+                    "description": "S-wave velocity values (m/s)."
+                },
+                "rhob": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    },
+                    "description": "Bulk density values (g/cc)."
+                }
+            },
+            "required": ["phit", "vclay", "vp", "vs", "rhob"]
+        }
     }
 ]
 
@@ -236,5 +349,9 @@ TOOL_FUNCTIONS = {
     "plot_wedge_model": "tools.wedge_tools.plot_wedge_model",
     "zoeppritz_reflectivity": "tools.avo_tools.zoeppritz_reflectivity",
     "shuey_reflectivity": "tools.avo_tools.shuey_reflectivity",
-    "plot_avo_reflectivity": "tools.avo_tools.plot_avo_reflectivity"
-} 
+    "plot_avo_reflectivity": "tools.avo_tools.plot_avo_reflectivity",
+    "calculate_rock_properties": "tools.rock_physics_tools.calculate_rock_properties",
+    "plot_rock_properties": "tools.rock_physics_tools.plot_rock_properties",
+    "rock_physics_rag": "tools.rock_physics_tools.rock_physics_rag",
+    "knowledge_rag": "tools.rag_tools.knowledge_rag"
+}

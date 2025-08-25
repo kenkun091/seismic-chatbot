@@ -50,6 +50,14 @@ def demonstrate_tool_use():
     response = chatbot.process_single_input(request)
     print(f"Assistant: {response}")
     
+    # Example 5: Tool use - Rock Physics
+    print("\n🔧 Example 5: Tool Use - Rock Physics")
+    print("-" * 40)
+    request = "Calculate rock properties for porosity=[0.1, 0.2, 0.3], vclay=[0.1, 0.2, 0.3], fluid_type=gas"
+    print(f"User: {request}")
+    response = chatbot.process_single_input(request)
+    print(f"Assistant: {response}")
+    
     # Example 5: Follow-up question using context
     print("\n🔄 Example 5: Follow-up Question")
     print("-" * 40)
@@ -67,4 +75,4 @@ def demonstrate_tool_use():
     print("5. Clear separation between educational and computational tasks")
 
 if __name__ == "__main__":
-    demonstrate_tool_use() 
+    demonstrate_tool_use()
