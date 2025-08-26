@@ -3,17 +3,32 @@ from .topics.ricker_wavelets import RICKER_KNOWLEDGE
 from .topics.wedge_modeling import WEDGE_KNOWLEDGE
 from .topics.seismic_properties import SEISMIC_PROPERTIES_KNOWLEDGE
 from .topics.rock_physics import ROCK_PHYSICS_KNOWLEDGE
+from .rag_system import RAGSystem
 
 class KnowledgeBase:
     def __init__(self):
-        """Initialize the knowledge base with topic modules."""
+        """Initialize the knowledge base with topic modules and RAG system."""
         self.topics = {
             'ricker': RICKER_KNOWLEDGE,
             'wedge': WEDGE_KNOWLEDGE,
             'seismic_properties': SEISMIC_PROPERTIES_KNOWLEDGE,
             'rock_physics': ROCK_PHYSICS_KNOWLEDGE
         }
-
+        
+        # Initialize RAG system
+        self.rag_system = RAGSystem()
+        
+        # Populate the vector database with knowledge topics
+        self._populate_vector_db()
+    
+    def _populate_vector_db(self):
+        """Populate the vector database with all knowledge topics."""
+        try:
+            self.rag_system.populate_knowledge_base(self.topics)
+        except Exception as e:
+            print(f"Warning: Could not populate vector database: {e}")
+            print("RAG functionality will be limited until database is populated.")
+    
     def get_topic_response(self, topic: str, subtopic: Optional[str] = None) -> str:
         """
         Get a response for a specific topic and subtopic.
@@ -38,7 +53,29 @@ class KnowledgeBase:
             
         # Get specific subtopic response
         return topic_knowledge.get(subtopic, topic_knowledge.get('overview', self._get_default_response()))
-
+    
+    def query_knowledge(self, query: str, domain: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Query the knowledge base using RAG (Retrieval-Augmented Generation).
+        
+        Args:
+            query: The user's question
+            domain: Optional domain to restrict search
+            
+        Returns:
+            Dict containing generated response and metadata
+        """
+        return self.rag_system.retrieve_and_generate(query, domain)
+    
+    def get_knowledge_base_info(self) -> Dict[str, Any]:
+        """
+        Get information about the current knowledge base.
+        
+        Returns:
+            Dict with knowledge base statistics
+        """
+        return self.rag_system.get_knowledge_base_info()
+    
     def _get_default_response(self) -> str:
         """
         Get the default response when no specific topic is found.
@@ -81,4 +118,6 @@ class KnowledgeBase:
 - *"What determines seismic resolution?"*
 - *"How do I choose the right wavelet frequency?"*
 - *"Explain tuning effects in thin beds"*
-- *"What's the difference between zero-phase and minimum-phase wavelets?"*"""
+- *"What's the difference between zero-phase and minimum-phase wavelets?"*
+
+**💡 Tip:** You can also ask me specific questions about any of these topics, and I'll use my knowledge base to provide detailed, accurate answers!"""
