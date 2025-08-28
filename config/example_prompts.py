@@ -91,6 +91,54 @@ EXAMPLE_PROMPTS = {
         }
     ],
     
+    "Rock Physics": [
+        {
+            "title": "Calculate rock properties",
+            "prompt": "Calculate Vp, Vs, and density for porosity=0.25, clay_volume=0.3, fluid_type='water'",
+            "description": "Calculate elastic properties from porosity and clay content"
+        },
+        {
+            "title": "Gas sand properties",
+            "prompt": "Calculate rock properties for porosity=0.20, clay_volume=0.15, fluid_type='gas'",
+            "description": "Model gas sand elastic properties"
+        },
+        {
+            "title": "Oil sand properties",
+            "prompt": "Calculate Vp, Vs, and density for porosity=0.18, clay_volume=0.25, fluid_type='oil'",
+            "description": "Model oil sand elastic properties"
+        },
+        {
+            "title": "Plot rock properties",
+            "prompt": "Calculate and plot rock properties for porosity range [0.1, 0.3] and clay volume [0.1, 0.5] with water saturation",
+            "description": "Visualize how rock properties vary with porosity and clay content"
+        },
+        {
+            "title": "Shale properties",
+            "prompt": "Calculate elastic properties for high clay content: porosity=0.12, clay_volume=0.8, fluid_type='water'",
+            "description": "Model shale rock properties"
+        },
+        {
+            "title": "Sandstone properties",
+            "prompt": "Calculate Vp, Vs, and density for clean sandstone: porosity=0.22, clay_volume=0.05, fluid_type='water'",
+            "description": "Model clean sandstone properties"
+        },
+        {
+            "title": "Rock physics RAG query",
+            "prompt": "What are the key factors that affect P-wave velocity in rocks?",
+            "description": "Use RAG to get information about velocity controls"
+        },
+        {
+            "title": "Fluid substitution effects",
+            "prompt": "How do different fluids affect seismic velocities and what are the implications for AVO analysis?",
+            "description": "Learn about fluid effects on rock properties"
+        },
+        {
+            "title": "Elastic modulus relationships",
+            "prompt": "What are the relationships between bulk modulus, shear modulus, and seismic velocities?",
+            "description": "Understand elastic property relationships"
+        }
+    ],
+    
     "Advanced Topics": [
         {
             "title": "Tuning analysis",
