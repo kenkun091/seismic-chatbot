@@ -206,11 +206,19 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
             # Check if this is a knowledge question that should use RAG
             if self._is_knowledge_question(user_input):
                 logger.info("Using RAG for knowledge question")
-                return self._handle_knowledge_question(user_input)
+                response = self._handle_knowledge_question(user_input)
+            else:
+                # Otherwise, use the regular tool-based approach
+                logger.info("Using tool-based approach")
+                response = self._handle_tool_request(user_input)
             
-            # Otherwise, use the regular tool-based approach
-            logger.info("Using tool-based approach")
-            return self._handle_tool_request(user_input)
+            # Final safety check: ensure we never return boolean values
+            if isinstance(response, bool):
+                response = str(response)
+            elif response is None:
+                response = "I didn't get a response. Please try again."
+            
+            return response
             
         except Exception as e:
             logger.error(f"Error processing input: {e}")
@@ -278,16 +286,28 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
                 
             elif rag_response.get('rag_type') == 'no_results':
                 # No relevant documents found
-                return rag_response['generated_response']
+                response = rag_response['generated_response']
+                # Ensure we never return boolean values
+                if isinstance(response, bool):
+                    response = str(response)
+                return response
                 
             else:
                 # Error or fallback
-                return rag_response['generated_response']
+                response = rag_response['generated_response']
+                # Ensure we never return boolean values
+                if isinstance(response, bool):
+                    response = str(response)
+                return response
                 
         except Exception as e:
             logger.error(f"Error in RAG processing: {e}")
             # Fallback to regular knowledge base
-            return self._fallback_knowledge_response(user_input)
+            response = self._fallback_knowledge_response(user_input)
+            # Ensure we never return boolean values
+            if isinstance(response, bool):
+                response = str(response)
+            return response
     
     def _fallback_knowledge_response(self, user_input: str) -> str:
         """
@@ -304,15 +324,35 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
         
         # Check for specific topics
         if any(word in user_input_lower for word in ['ricker', 'wavelet']):
-            return self.knowledge_base.get_topic_response('ricker', 'overview')
+            response = self.knowledge_base.get_topic_response('ricker', 'overview')
+            # Ensure we never return boolean values
+            if isinstance(response, bool):
+                response = str(response)
+            return response
         elif any(word in user_input_lower for word in ['wedge', 'model']):
-            return self.knowledge_base.get_topic_response('wedge', 'overview')
+            response = self.knowledge_base.get_topic_response('wedge', 'overview')
+            # Ensure we never return boolean values
+            if isinstance(response, bool):
+                response = str(response)
+            return response
         elif any(word in user_input_lower for word in ['seismic', 'resolution', 'frequency']):
-            return self.knowledge_base.get_topic_response('seismic_properties', 'overview')
+            response = self.knowledge_base.get_topic_response('seismic_properties', 'overview')
+            # Ensure we never return boolean values
+            if isinstance(response, bool):
+                response = str(response)
+            return response
         elif any(word in user_input_lower for word in ['rock', 'physics', 'porosity', 'velocity']):
-            return self.knowledge_base.get_topic_response('rock_physics', 'overview')
+            response = self.knowledge_base.get_topic_response('rock_physics', 'overview')
+            # Ensure we never return boolean values
+            if isinstance(response, bool):
+                response = str(response)
+            return response
         else:
-            return self.knowledge_base.get_topic_response('ricker', 'overview')  # Default topic
+            response = self.knowledge_base.get_topic_response('ricker', 'overview')  # Default topic
+            # Ensure we never return boolean values
+            if isinstance(response, bool):
+                response = str(response)
+            return response
     
     def _handle_tool_request(self, user_input: str) -> str:
         """
@@ -390,6 +430,9 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
                     self.context_manager.update_token_usage(final_response["usage"])
                 
                 result = self._extract_reply(final_response["content"]) or final_response["content"]
+                # Ensure we never return boolean values
+                if isinstance(result, bool):
+                    result = str(result)
                 return result
                 
             except Exception as e:
@@ -399,6 +442,9 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
             # Return the direct response
             messages.append({"role": "assistant", "content": response["content"]})
             result = self._extract_reply(response["content"]) or response["content"]
+            # Ensure we never return boolean values
+            if isinstance(result, bool):
+                result = str(result)
             return result
     
     def _is_image_output(self, tool_name: str, tool_result: Any) -> bool:
@@ -464,20 +510,7 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
                     if self._is_image_output("plot_avo_reflectivity", plot_result):
                         return {"image_path": plot_result}
             
-            # Automatic chaining: if calculate_rock_properties, immediately call plot_rock_properties
-            elif tool_name == "calculate_rock_properties":
-                if isinstance(tool_result, tuple) and len(tool_result) == 3:
-                    vp, vs, rhob = tool_result
-                    plot_input = {
-                        "phit": tool_input["phit"],
-                        "vclay": tool_input["vclay"],
-                        "vp": vp,
-                        "vs": vs,
-                        "rhob": rhob
-                    }
-                    plot_result = self.tool_manager.process_tool_call("plot_rock_properties", plot_input)
-                    if self._is_image_output("plot_rock_properties", plot_result):
-                        return {"image_path": plot_result}
+
             
             return None
             
@@ -550,14 +583,17 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
                     
             elif tool_name == "calculate_rock_properties":
                 # Store rock properties data for reference
-                if isinstance(tool_result, tuple) and len(tool_result) == 3:
-                    vp, vs, rhob = tool_result
+                if isinstance(tool_result, tuple) and len(tool_result) == 6:
+                    vp, vs, rhob, vp_vs_ratio, ai, si = tool_result
                     self.context_manager.set_context("last_rock_properties", {
                         "phit": tool_input["phit"],
                         "vclay": tool_input["vclay"],
                         "vp": vp,
                         "vs": vs,
                         "rhob": rhob,
+                        "vp_vs_ratio": vp_vs_ratio,
+                        "acoustic_impedance": ai,
+                        "shear_impedance": si,
                         "fluid_type": tool_input.get("fluid_type", "water"),
                         "parameters": tool_input
                     })

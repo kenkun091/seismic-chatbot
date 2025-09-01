@@ -2,7 +2,6 @@ import os
 import logging
 from typing import Dict, List, Any, Optional
 import chromadb
-from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
 from config.settings import RAG_EMBEDDING_MODEL, RAG_VECTOR_DB_PATH
 
@@ -26,14 +25,8 @@ class VectorDatabase:
         # Ensure the directory exists
         os.makedirs(self.persist_directory, exist_ok=True)
         
-        # Initialize ChromaDB client
-        self.client = chromadb.PersistentClient(
-            path=self.persist_directory,
-            settings=Settings(
-                chroma_db_impl="duckdb+parquet",
-                persist_directory=self.persist_directory
-            )
-        )
+        # Initialize ChromaDB client with new API
+        self.client = chromadb.PersistentClient(path=self.persist_directory)
         
         # Get or create the collection
         self.collection = self._get_or_create_collection()

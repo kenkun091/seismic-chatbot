@@ -1,24 +1,40 @@
 # Tools for rock physics calculations
 import numpy as np
-import matplotlib.pyplot as plt
-import os
-import tempfile
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Union
 from knowledge.vector_db import VectorDatabase
 from knowledge.topics.rock_physics import ROCK_PHYSICS_KNOWLEDGE
 
-def calculate_rock_properties(phit, vclay, fluid_type='water'):
+def _format_value(value: Union[float, np.ndarray], precision: int = 3) -> str:
     """
-    Calculate Vp, Vs, and density (rhob) from porosity (phit) and clay volume (vclay)
+    Format a value (scalar or array) for printing.
+    
+    Args:
+        value: Scalar float or numpy array
+        precision: Number of decimal places
+        
+    Returns:
+        Formatted string representation
+    """
+    if isinstance(value, np.ndarray):
+        return np.array2string(value, precision=precision)
+    else:
+        return f"{value:.{precision}f}"
+
+def calculate_rock_properties(phit, vclay, fluid_type='water', print_results=True):
+    """
+    Calculate Vp, Vs, density (rhob), impedance, and Vp/Vs ratio from porosity (phit) and clay volume (vclay)
     using empirical rock physics relationships.
     
     Args:
         phit: float or array-like, porosity (fraction, 0-1)
         vclay: float or array-like, clay volume (fraction, 0-1)
         fluid_type: str, fluid type ('water', 'oil', or 'gas')
+        print_results: bool, whether to print the calculated values
         
     Returns:
-        tuple: (vp, vs, rhob) - P-wave velocity (m/s), S-wave velocity (m/s), and bulk density (g/cc)
+        tuple: (vp, vs, rhob, vp_vs_ratio, ai, si) - P-wave velocity (m/s), S-wave velocity (m/s), 
+               bulk density (g/cc), Vp/Vs ratio, acoustic impedance (×10⁶ kg/m²·s), 
+               and shear impedance (×10⁶ kg/m²·s)
     """
     # Convert inputs to numpy arrays if they aren't already
     phit = np.asarray(phit)
@@ -77,60 +93,92 @@ def calculate_rock_properties(phit, vclay, fluid_type='water'):
         vp = vp * (1.0 - 0.3 * phit)  # Stronger effect on Vp
         vs = vs * (1.0 - 0.1 * phit)  # Weaker effect on Vs
     
-    return vp, vs, rhob
+    # Calculate Vp/Vs ratio
+    vp_vs_ratio = vp / vs
+    
+    # Calculate impedance values
+    # Convert density from g/cc to kg/m³ for impedance calculation
+    rho_kg_m3 = rhob * 1000
+    ai = rho_kg_m3 * vp / 1e6  # Acoustic impedance in ×10⁶ kg/m²·s
+    si = rho_kg_m3 * vs / 1e6  # Shear impedance in ×10⁶ kg/m²·s
+    
+    # Print results if requested
+    if print_results:
+        print(f"\n=== Rock Properties Calculation Results ===")
+        print(f"Input Parameters:")
+        print(f"  Porosity (phit): {phit}")
+        print(f"  Clay Volume (vclay): {vclay}")
+        print(f"  Fluid Type: {fluid_type}")
+        print(f"\nCalculated Properties:")
+        print(f"  P-wave Velocity (Vp): {_format_value(vp, 0)} m/s")
+        print(f"  S-wave Velocity (Vs): {_format_value(vs, 0)} m/s")
+        print(f"  Bulk Density (rhob): {_format_value(rhob, 3)} g/cc")
+        print(f"  Vp/Vs Ratio: {_format_value(vp_vs_ratio, 2)}")
+        print(f"  Acoustic Impedance (AI): {_format_value(ai, 2)} × 10⁶ kg/m²·s")
+        print(f"  Shear Impedance (SI): {_format_value(si, 2)} × 10⁶ kg/m²·s")
+        print(f"  Matrix Density: {_format_value(rho_matrix, 3)} g/cc")
+        print(f"  Fluid Density: {_format_value(rho_fluid, 3)} g/cc")
+        print("=" * 40)
+    
+    return vp, vs, rhob, vp_vs_ratio, ai, si
 
-def plot_rock_properties(phit, vclay, vp, vs, rhob, output_path=None):
+def calculate_elastic_moduli(vp, vs, rhob):
     """
-    Plot calculated rock properties as a function of porosity and clay volume.
+    Calculate elastic moduli from velocities and density.
     
     Args:
-        phit: array-like, porosity values
-        vclay: array-like, clay volume values
-        vp: array-like, P-wave velocity values
-        vs: array-like, S-wave velocity values
-        rhob: array-like, bulk density values
-        output_path: Optional path to save the plot. If None, creates a temporary file.
+        vp: P-wave velocity (m/s)
+        vs: S-wave velocity (m/s)
+        rhob: bulk density (g/cc)
         
     Returns:
-        str: Path to the saved plot file
+        tuple: (K, G, E, nu) - bulk modulus, shear modulus, Young's modulus, and Poisson's ratio
     """
-    import tempfile
-    import os
+    # Convert density from g/cc to kg/m³
+    rho_kg_m3 = rhob * 1000
     
-    # Create figure with 3 subplots
-    fig, axs = plt.subplots(3, 1, figsize=(10, 12))
+    # Calculate elastic moduli
+    K = rho_kg_m3 * (vp**2 - 4/3 * vs**2)  # Bulk modulus (Pa)
+    G = rho_kg_m3 * vs**2  # Shear modulus (Pa)
+    E = 9 * K * G / (3 * K + G)  # Young's modulus (Pa)
+    nu = (3 * K - 2 * G) / (2 * (3 * K + G))  # Poisson's ratio
     
-    # Plot Vp
-    sc1 = axs[0].scatter(phit, vclay, c=vp, cmap='viridis', s=50)
-    axs[0].set_xlabel('Porosity (fraction)')
-    axs[0].set_ylabel('Clay Volume (fraction)')
-    axs[0].set_title('P-wave Velocity (m/s)')
-    plt.colorbar(sc1, ax=axs[0])
+    # Print results
+    print(f"\n=== Elastic Moduli Calculation ===")
+    print(f"Bulk Modulus (K): {_format_value(K/1e9, 2)} GPa")
+    print(f"Shear Modulus (G): {_format_value(G/1e9, 2)} GPa")
+    print(f"Young's Modulus (E): {_format_value(E/1e9, 2)} GPa")
+    print(f"Poisson's Ratio (ν): {_format_value(nu, 3)}")
+    print("=" * 35)
     
-    # Plot Vs
-    sc2 = axs[1].scatter(phit, vclay, c=vs, cmap='plasma', s=50)
-    axs[1].set_xlabel('Porosity (fraction)')
-    axs[1].set_ylabel('Clay Volume (fraction)')
-    axs[1].set_title('S-wave Velocity (m/s)')
-    plt.colorbar(sc2, ax=axs[1])
+    return K, G, E, nu
+
+def calculate_impedance(vp, vs, rhob):
+    """
+    Calculate acoustic and shear impedance.
     
-    # Plot density
-    sc3 = axs[2].scatter(phit, vclay, c=rhob, cmap='cividis', s=50)
-    axs[2].set_xlabel('Porosity (fraction)')
-    axs[2].set_ylabel('Clay Volume (fraction)')
-    axs[2].set_title('Bulk Density (g/cc)')
-    plt.colorbar(sc3, ax=axs[2])
+    Args:
+        vp: P-wave velocity (m/s)
+        vs: S-wave velocity (m/s)
+        rhob: bulk density (g/cc)
+        
+    Returns:
+        tuple: (AI, SI) - acoustic impedance and shear impedance
+    """
+    # Convert density from g/cc to kg/m³
+    rho_kg_m3 = rhob * 1000
     
-    plt.tight_layout()
+    # Calculate impedances
+    AI = rho_kg_m3 * vp  # Acoustic impedance (kg/m²·s)
+    SI = rho_kg_m3 * vs  # Shear impedance (kg/m²·s)
     
-    if output_path is None:
-        fd, output_path = tempfile.mkstemp(suffix=".png")
-        os.close(fd)
+    # Print results
+    print(f"\n=== Impedance Calculation ===")
+    print(f"Acoustic Impedance (AI): {_format_value(AI/1e6, 2)} × 10⁶ kg/m²·s")
+    print(f"Shear Impedance (SI): {_format_value(SI/1e6, 2)} × 10⁶ kg/m²·s")
+    print("=" * 30)
     
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    return output_path
+    return AI, SI
 
 
 # Initialize the vector database with rock physics knowledge

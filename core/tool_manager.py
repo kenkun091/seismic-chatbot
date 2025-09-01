@@ -6,7 +6,7 @@ from config.tool_schemas import TOOL_SCHEMAS, TOOL_FUNCTIONS
 from tools.ricker_tools import create_ricker_wavelet, plot_wavelet
 from tools.wedge_tools import create_wedge_model, plot_wedge_model
 from tools.avo_tools import zoeppritz_reflectivity, shuey_reflectivity, plot_avo_reflectivity
-from tools.rock_physics_tools import calculate_rock_properties, plot_rock_properties, rock_physics_rag
+from tools.rock_physics_tools import calculate_rock_properties, rock_physics_rag
 from tools.rag_tools import knowledge_rag
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,6 @@ class ToolManager:
             'shuey_reflectivity': shuey_reflectivity,
             'plot_avo_reflectivity': plot_avo_reflectivity,
             'calculate_rock_properties': calculate_rock_properties,
-            'plot_rock_properties': plot_rock_properties,
             'rock_physics_rag': rock_physics_rag,
             'knowledge_rag': knowledge_rag
         }
@@ -55,10 +54,7 @@ class ToolManager:
             'optional_params': {'fluid_type': 'water'}
         })
         
-        self.tool_configs.setdefault('plot_rock_properties', {
-            'required_params': ['phit', 'vclay', 'vp', 'vs', 'rhob'],
-            'optional_params': {}
-        })
+
         
         self.tool_configs.setdefault('rock_physics_rag', {
             'required_params': ['query'],

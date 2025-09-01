@@ -268,7 +268,7 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "calculate_rock_properties",
-        "description": "Calculates Vp, Vs, and density (rhob) from porosity (phit) and clay volume (vclay) using empirical rock physics relationships.",
+        "description": "Calculates Vp, Vs, density (rhob), Vp/Vs ratio, acoustic impedance, and shear impedance from porosity (phit) and clay volume (vclay) using empirical rock physics relationships. Returns all calculated values without plotting.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -294,51 +294,7 @@ TOOL_SCHEMAS = [
             "required": ["phit", "vclay"]
         }
     },
-    {
-        "name": "plot_rock_properties",
-        "description": "Plots calculated rock properties (Vp, Vs, density) as a function of porosity and clay volume.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "phit": {
-                    "type": "array",
-                    "items": {
-                        "type": "number"
-                    },
-                    "description": "Porosity values (fraction, 0-1)."
-                },
-                "vclay": {
-                    "type": "array",
-                    "items": {
-                        "type": "number"
-                    },
-                    "description": "Clay volume values (fraction, 0-1)."
-                },
-                "vp": {
-                    "type": "array",
-                    "items": {
-                        "type": "number"
-                    },
-                    "description": "P-wave velocity values (m/s)."
-                },
-                "vs": {
-                    "type": "array",
-                    "items": {
-                        "type": "number"
-                    },
-                    "description": "S-wave velocity values (m/s)."
-                },
-                "rhob": {
-                    "type": "array",
-                    "items": {
-                        "type": "number"
-                    },
-                    "description": "Bulk density values (g/cc)."
-                }
-            },
-            "required": ["phit", "vclay", "vp", "vs", "rhob"]
-        }
-    }
+
 ]
 
 # Tool function mapping for execution
@@ -351,7 +307,6 @@ TOOL_FUNCTIONS = {
     "shuey_reflectivity": "tools.avo_tools.shuey_reflectivity",
     "plot_avo_reflectivity": "tools.avo_tools.plot_avo_reflectivity",
     "calculate_rock_properties": "tools.rock_physics_tools.calculate_rock_properties",
-    "plot_rock_properties": "tools.rock_physics_tools.plot_rock_properties",
     "rock_physics_rag": "tools.rock_physics_tools.rock_physics_rag",
     "knowledge_rag": "tools.rag_tools.knowledge_rag"
 }

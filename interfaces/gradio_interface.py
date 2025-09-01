@@ -14,19 +14,19 @@ def create_chat_interface():
         try:
             response = seismic_bot.process_single_input(message)
             
-            # Convert to new message format
-            chat_history.append({"role": "user", "content": message})
+            # Convert to Gradio 3.x compatible format
+            chat_history.append([message, None])
             
             # Handle different response types
             if isinstance(response, dict) and 'image_path' in response:
                 # Handle image response
-                chat_history.append({"role": "assistant", "content": (response['image_path'],)})
+                chat_history[-1][1] = (response['image_path'],)
             elif isinstance(response, str):
                 # Handle text response
-                chat_history.append({"role": "assistant", "content": response})
+                chat_history[-1][1] = response
             else:
                 # Handle other response types
-                chat_history.append({"role": "assistant", "content": str(response)})
+                chat_history[-1][1] = str(response)
                 
             # Get token usage for display
             token_usage = seismic_bot.context_manager.get_token_usage()
@@ -34,7 +34,7 @@ def create_chat_interface():
                 
         except Exception as e:
             error_msg = f"Error processing request: {str(e)}"
-            chat_history.append({"role": "assistant", "content": error_msg})
+            chat_history[-1][1] = error_msg
             
             # Return empty token usage on error
             return "", chat_history, ""
@@ -80,21 +80,21 @@ def create_chat_interface():
         - Answering questions about seismic properties
         - Explaining seismic modeling concepts
         
-        **Available Tools:**
-        - `make_ricker`: Create Ricker wavelets with specified frequency
-        - `plot_ricker`: Plot wavelets with time and frequency analysis
-        - `wedge_model`: Create wedge models for seismic analysis
-        - `plot_wedge_model`: Plot wedge model results
-        - `zoeppritz_reflectivity`: Calculate reflectivity using Zoeppritz equations
-        - `shuey_reflectivity`: Calculate reflectivity using Shuey's approximation
-        - `plot_avo_reflectivity`: Plot AVO reflectivity curves
+        # **Available Tools:**
+        # - `make_ricker`: Create Ricker wavelets with specified frequency
+        # - `plot_ricker`: Plot wavelets with time and frequency analysis
+        # - `wedge_model`: Create wedge models for seismic analysis
+        # - `plot_wedge_model`: Plot wedge model results
+        # - `zoeppritz_reflectivity`: Calculate reflectivity using Zoeppritz equations
+        # - `shuey_reflectivity`: Calculate reflectivity using Shuey's approximation
+        # - `plot_avo_reflectivity`: Plot AVO reflectivity curves
         
         **💡 Tip:** Use the example prompts below to get started quickly!
         """)
         
         with gr.Row():
             with gr.Column(scale=3):
-                chat_display = gr.Chatbot(height=600, type='messages')
+                chat_display = gr.Chatbot(height=600)
                 with gr.Row():
                     msg = gr.Textbox(
                         placeholder="Ask a question or request an action...",

@@ -44,19 +44,33 @@ class LLMClient:
                 openai_messages.append({"role": "system", "content": system_prompt})
             if user_prompt:
                 openai_messages.append({"role": "user", "content": user_prompt})
-            openai_messages.extend(messages)
+            if messages:  # Only extend if messages is not None
+                openai_messages.extend(messages)
 
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=openai_messages,
-                tools=tools,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens
-            )
+            # Prepare parameters for the API call
+            api_params = {
+                "model": self.model,
+                "messages": openai_messages,
+                "temperature": self.temperature,
+                "max_tokens": self.max_tokens
+            }
+            
+            # Only add tools if they are provided and not None
+            if tools:
+                api_params["tools"] = tools
+            
+            response = self.client.chat.completions.create(**api_params)
+            
+            # Safety check: ensure we have a valid response
+            if not response.choices:
+                raise ValueError("No choices returned from LLM API")
+                
             message = response.choices[0].message
+            if not message:
+                raise ValueError("No message returned from LLM API")
             # Return a dict compatible with the rest of the code
             result = {
-                "content": message.content,
+                "content": message.content or "",  # Ensure content is never None
                 "tool_calls": getattr(message, "tool_calls", None),
                 "stop_reason": getattr(message, "finish_reason", None),
                 "usage": getattr(response, "usage", None)
@@ -79,4 +93,5 @@ class LLMClient:
             str: The LLM's response
         """
         response = self.get_completion(system_prompt, user_prompt)
-        return response["content"].strip() if response["content"] else ""
+        content = response.get("content", "")
+        return content.strip() if content else ""

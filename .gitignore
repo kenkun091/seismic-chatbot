@@ -43,4 +43,6 @@ htmlcov/
 .ipynb_checkpoints/
 *.ipynb
 
+chroma_db/
+
 *.p
