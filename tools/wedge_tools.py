@@ -4,7 +4,10 @@ import scipy.signal
 
 import os
 
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple, Dict, Union
+
+# Import from avo_tools
+from .avo_tools import shuey_reflectivity
 
 import matplotlib
 matplotlib.use('Agg')
@@ -275,7 +278,7 @@ def pick_interface_and_amp(data, interface1_t, interface2_t, t0, nt, dt):
 
     return hor1_tpicks, hor2_tpicks, hor3_tpicks, amp_picks
 
-def create_figure():
+def create_figure(figsize=(12, 14)):
     params = {
         'legend.fontsize': 'x-large',
         'axes.labelsize': 16,
@@ -285,13 +288,13 @@ def create_figure():
     }
     plt.rcParams.update(params)
 
-    fig, axes = plt.subplots(3, 1, figsize=(12, 14))
+    fig, axes = plt.subplots(3, 1, figsize=figsize)
 
     return fig, axes
 
 def make_plot(zunit, data, wavelet_label, vp_layers, rho_layers, thickness, \
     interface1_t, interface2_t, t0, nt, dt, z_min, z_max, dz, gain, plotpadtime, thickness_domain,\
-        fig_fname, csv_fname=''):
+        fig_fname, csv_fname='', figsize=(12, 14)):
     
     hor1_tpicks, hor2_tpicks, hor3_tpicks, amp_picks = pick_interface_and_amp(data, interface1_t, interface2_t, t0, nt, dt)
     thickness_apparent_t = hor2_tpicks - hor1_tpicks
@@ -306,7 +309,7 @@ def make_plot(zunit, data, wavelet_label, vp_layers, rho_layers, thickness, \
         thickness_unit = zunit
     
     excursion = gain*dz
-    fig, axes = create_figure()
+    fig, axes = create_figure(figsize)
 
     ax0, ax1, ax2 = axes
     layer_labels = []
@@ -542,7 +545,7 @@ def plot_wavelet(dt, wv_type, ricker_freq, ormsby_freq, wavelet_str, wavelet_fna
     plt.savefig(fig_fname)
     plt.close()
 
-def wedge_model(zunit, max_thickness, wv_type, ricker_freq, ormsby_freq, wavelet_str, wavelet_fname, phase_rot, vp1, vp2, vp3, rho1, rho2, rho3, gain, plotpadtime, thickness_domain, fig_fname, csv_fname):
+def wedge_model(zunit, max_thickness, wv_type, ricker_freq, ormsby_freq, wavelet_str, wavelet_fname, phase_rot, vp1, vp2, vp3, rho1, rho2, rho3, gain, plotpadtime, thickness_domain, fig_fname, csv_fname, vs1=None, vs2=None, vs3=None, incident_angle=0):
     """
     Creates a wedge model for seismic analysis.
     
@@ -562,10 +565,15 @@ def wedge_model(zunit, max_thickness, wv_type, ricker_freq, ormsby_freq, wavelet
     - thickness_domain: Domain for thickness calculation ('time' or 'depth')
     - fig_fname: Output figure filename
     - csv_fname: Output CSV filename for curves
+    - vs1, vs2, vs3: S-wave velocities for the three layers (units/s). If None, estimated as vp/2
+    - incident_angle: Incident angle(s) in degrees for Shuey calculation. Can be a single value or a list
     """
     # Create arrays for layer properties
     vp_layers = [vp1, vp2, vp3]
     rho_layers = [rho1, rho2, rho3]
+    vs_layers = [vs1 if vs1 is not None else vp1/2.0, 
+                vs2 if vs2 is not None else vp2/2.0, 
+                vs3 if vs3 is not None else vp3/2.0]
     
     # Calculate acoustic impedance for each layer
     imp_layers = [vp_layers[i]*rho_layers[i] for i in range(3)]
@@ -598,8 +606,34 @@ def wedge_model(zunit, max_thickness, wv_type, ricker_freq, ormsby_freq, wavelet
     rc_model = np.zeros((nt, ntraces))
 
     # Calculate reflection coefficients at layer interfaces
-    rc1 = (imp_layers[1] - imp_layers[0])/(imp_layers[1] + imp_layers[0])  # Upper interface
-    rc2 = (imp_layers[2] - imp_layers[1])/(imp_layers[2] + imp_layers[1])  # Lower interface
+    if incident_angle != 0:
+        # Use Shuey approximation for angle-dependent reflectivity
+        if isinstance(incident_angle, (int, float)):
+            angles = [incident_angle]
+        else:
+            angles = incident_angle
+            
+        # Calculate reflectivity for upper interface using Shuey approximation
+        rc1_array = shuey_reflectivity(
+            vp1=vp_layers[0], vs1=vs_layers[0], rho1=rho_layers[0],
+            vp2=vp_layers[1], vs2=vs_layers[1], rho2=rho_layers[1],
+            angles=angles
+        )
+        
+        # Calculate reflectivity for lower interface using Shuey approximation
+        rc2_array = shuey_reflectivity(
+            vp1=vp_layers[1], vs1=vs_layers[1], rho1=rho_layers[1],
+            vp2=vp_layers[2], vs2=vs_layers[2], rho2=rho_layers[2],
+            angles=angles
+        )
+        
+        # Use the first angle's reflectivity or average if multiple angles
+        rc1 = rc1_array[0] if len(angles) == 1 else np.mean(rc1_array)
+        rc2 = rc2_array[0] if len(angles) == 1 else np.mean(rc2_array)
+    else:
+        # Default to simple acoustic impedance method
+        rc1 = (imp_layers[1] - imp_layers[0])/(imp_layers[1] + imp_layers[0])  # Upper interface
+        rc2 = (imp_layers[2] - imp_layers[1])/(imp_layers[2] + imp_layers[1])  # Lower interface
 
     # Create thickness array for the wedge
     thickness = np.linspace(z_min, z_max, ntraces)
@@ -680,6 +714,7 @@ def wedge_model(zunit, max_thickness, wv_type, ricker_freq, ormsby_freq, wavelet
         'max_thickness': max_thickness,
         'v1': vp1, 'v2': vp2, 'v3': vp3,
         'rho1': rho1, 'rho2': rho2, 'rho3': rho3,
+        'vs1': vs1, 'vs2': vs2, 'vs3': vs3,
         'rc1': rc1, 'rc2': rc2,
         'wavelet_freq': ricker_freq if wv_type == 'ricker' else float(ormsby_freq.split(',')[0]),
         'dt': dt,
@@ -693,7 +728,8 @@ def wedge_model(zunit, max_thickness, wv_type, ricker_freq, ormsby_freq, wavelet
         'nt': nt,
         'dz': dz,
         'gain': gain,
-        'plotpadtime': plotpadtime
+        'plotpadtime': plotpadtime,
+        'incident_angle': incident_angle
     }, fig_fname
 
 def create_wedge_model(
@@ -714,10 +750,35 @@ def create_wedge_model(
     gain: float = 1.0,
     plotpadtime: float = 50.0,
     thickness_domain: str = 'depth',
-    zunit: str = 'm'
+    zunit: str = 'm',
+    vs1: Optional[float] = None,
+    vs2: Optional[float] = None,
+    vs3: Optional[float] = None,
+    incident_angle: Union[float, list] = 0
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Dict]:
     """
     Create a wedge model with specified parameters and return the path to the plot.
+    
+    Args:
+        max_thickness: Maximum thickness of the wedge
+        v1, v2, v3: P-wave velocities for the three layers (units/s)
+        rho1, rho2, rho3: Densities for the three layers (g/cc)
+        num_traces: Number of traces in the model
+        dt: Time sampling interval (ms)
+        wavelet_freq: Frequency for Ricker wavelet (Hz)
+        wavelet_length: Length of the wavelet (ms)
+        phase_rot: Phase rotation in degrees
+        wv_type: Wavelet type ('ricker', 'ormsby', or custom)
+        ormsby_freq: Comma-separated frequencies for Ormsby wavelet
+        gain: Gain factor for display
+        plotpadtime: Padding time for plots (ms)
+        thickness_domain: Domain for thickness calculation ('time' or 'depth')
+        zunit: Unit for depth/thickness (e.g., 'm', 'ft')
+        vs1, vs2, vs3: S-wave velocities for the three layers (units/s). If None, estimated as vp/2
+        incident_angle: Incident angle(s) in degrees for Shuey calculation. Can be a single value or a list
+        
+    Returns:
+        Tuple containing time array, model, synthetic data, and parameters dictionary
     """
     # Call the internal wedge_model function that does the work
     time_array, model, synthetic, parameters, _ = wedge_model(
@@ -739,22 +800,39 @@ def create_wedge_model(
         plotpadtime=plotpadtime,
         thickness_domain=thickness_domain,
         fig_fname='',
-        csv_fname=''
+        csv_fname='',
+        vs1=vs1,
+        vs2=vs2,
+        vs3=vs3,
+        incident_angle=incident_angle
     )
     
     return time_array, model, synthetic, parameters
 
 def plot_wedge_model(
     synthetic_data: np.ndarray,
-    parameters: Dict
+    parameters: Dict,
+    figsize: Optional[Tuple[float, float]] = None
 ) -> str:
     """
     Plot a wedge model and return the path to the plot.
+    
+    Args:
+        synthetic_data: 2D array of synthetic data
+        parameters: Dictionary of model parameters
+        figsize: Optional figure size as (width, height) in inches. Default is (12, 14).
+        
+    Returns:
+        str: Path to the generated plot file
     """
     import tempfile
     
     fig_fd, fig_fname = tempfile.mkstemp(suffix=".png")
     os.close(fig_fd)
+    
+    # Use default figsize if not provided
+    if figsize is None:
+        figsize = (12, 14)
     
     make_plot(
         zunit=parameters['zunit'],
@@ -775,7 +853,8 @@ def plot_wedge_model(
         plotpadtime=parameters['plotpadtime'],
         thickness_domain=parameters['thickness_domain'],
         fig_fname=fig_fname,
-        csv_fname=''
+        csv_fname='',
+        figsize=figsize
     )
     
     return fig_fname

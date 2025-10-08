@@ -131,7 +131,23 @@ TOOL_SCHEMAS = [
                 "num_traces": {
                     "type": "integer",
                     "description": "Number of traces in the wedge model (default: 61)."
-                }
+                },
+                "vs1": {
+                    "type": "number",
+                    "description": "S-wave velocity of the first layer in m/s (optional, defaults to v1/2)."
+                },
+                "vs2": {
+                    "type": "number",
+                    "description": "S-wave velocity of the second layer in m/s (optional, defaults to v2/2)."
+                },
+                "vs3": {
+                    "type": "number",
+                    "description": "S-wave velocity of the third layer in m/s (optional, defaults to v3/2)."
+                },
+                "incident_angle": {
+                    "type": "number",
+                    "description": "Incident angle in degrees for angle-dependent reflectivity calculation (default: 0)."
+                },
             },
             "required": ["max_thickness", "v1", "v2", "v3", "rho1", "rho2", "rho3"]
         }
@@ -155,6 +171,13 @@ TOOL_SCHEMAS = [
                 "parameters": {
                     "type": "object",
                     "description": "Parameters used to create the wedge model."
+                },
+                "figsize": {
+                    "type": "array",
+                    "items": {
+                        "type": "number"
+                    },
+                    "description": "Figure size as [width, height] in inches. Default is [12, 14]. Use larger values like [18, 21] for enlargement."
                 }
             },
             "required": ["synthetic_data", "parameters"]

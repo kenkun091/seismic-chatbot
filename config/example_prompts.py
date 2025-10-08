@@ -65,6 +65,36 @@ EXAMPLE_PROMPTS = {
             "title": "Oil sand wedge",
             "prompt": "Make a wedge model for oil sand with velocities [2200, 2000, 2400] and densities [2.2, 2.0, 2.3], 120m thickness",
             "description": "Model an oil sand scenario"
+        },
+        {
+            "title": "AVO wedge model at 15 degrees",
+            "prompt": "Create a wedge model using Shuey approximation with incident angle=15, v1=2000, v2=2500, v3=3000, vs1=1000, vs2=1200, vs3=1500, rho1=2.1, rho2=2.3, rho3=2.5",
+            "description": "Model angle-dependent reflectivity at 15 degrees"
+        },
+        {
+            "title": "Gas sand AVO wedge",
+            "prompt": "Create a wedge model for gas sand using Shuey approximation with incident angle=20, v1=2200, v2=1800, v3=2400, vs1=1100, vs2=900, vs3=1200, rho1=2.2, rho2=1.9, rho3=2.3",
+            "description": "Model gas sand with angle-dependent reflectivity"
+        },
+        {
+            "title": "Wedge model with incident angle 30 degrees",
+            "prompt": "Make a wedge model with incident angle 30 degrees, v1=2000, v2=2500, v3=3000, rho1=2.1, rho2=2.3, rho3=2.5",
+            "description": "Create wedge model with specific incident angle"
+        },
+        {
+            "title": "Oil sand wedge at 25 degrees",
+            "prompt": "Create an oil sand wedge model with angle 25 degrees, velocities [2200, 2000, 2400], densities [2.2, 2.0, 2.3], max_thickness=120",
+            "description": "Model oil sand with angle-dependent reflectivity"
+        },
+        {
+            "title": "High angle wedge model",
+            "prompt": "Generate a wedge model with incident angle=45 degrees for v1=1800, v2=2200, v3=2600, rho1=1.9, rho2=2.2, rho3=2.4",
+            "description": "Model with high incident angle for AVO analysis"
+        },
+        {
+            "title": "Multiple angle wedge comparison",
+            "prompt": "Create wedge models with incident angles [0, 15, 30] degrees for v1=2000, v2=2500, v3=3000, rho1=2.1, rho2=2.3, rho3=2.5",
+            "description": "Compare wedge models at different incident angles"
         }
     ],
     
@@ -189,4 +219,4 @@ def search_prompts(query: str) -> list:
 def get_random_prompts(count: int = 3) -> list:
     """Get random prompts for suggestions."""
     import random
-    return random.sample(ALL_PROMPTS, min(count, len(ALL_PROMPTS))) 
+    return random.sample(ALL_PROMPTS, min(count, len(ALL_PROMPTS)))

@@ -55,8 +55,18 @@ AVAILABLE_TOOLS: Dict[str, Dict[str, Any]] = {
             'gain': 1.0,
             'plotpadtime': 50.0,
             'thickness_domain': 'depth',
-            'zunit': 'm'
+            'zunit': 'm',
+            'vs1': None,
+            'vs2': None,
+            'vs3': None,
+            'incident_angle': 0,
         }
+    },
+    'plot_wedge_model': {
+        'description': 'Plots a wedge model showing seismic response vs thickness',
+        'keywords': ['plot', 'show', 'visualize', 'display', 'graph', 'chart', 'wedge', 'enlarge', 'bigger', 'larger'],
+        'required_params': ['synthetic_data', 'parameters'],
+        'optional_params': {'figsize': [12, 14]}
     }
 }
 
