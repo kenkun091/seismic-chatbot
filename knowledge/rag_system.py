@@ -173,8 +173,12 @@ Guidelines:
 4. Use the context to provide specific, relevant information
 5. If asked about seismic concepts, explain them clearly
 6. Cite the specific documents you're using from the context
+7. Structure your response logically with clear sections
+8. Include relevant formulas, relationships, and typical values when available
+9. Explain trade-offs and practical considerations
+10. Be specific about limitations and uncertainties
 
-Format your response in a clear, structured way that directly addresses the user's question."""
+Format your response in a clear, structured way that directly addresses the user's question. Use markdown formatting for better readability."""
     
     def _create_user_prompt(self, query: str, context: str) -> str:
         """
@@ -187,12 +191,20 @@ Format your response in a clear, structured way that directly addresses the user
         Returns:
             User prompt string
         """
-        return f"""Based on the following context, please answer this question:
+        return f"""Based on the following context from the seismic modeling knowledge base, please answer this question comprehensively:
 
-Question: {query}
+**Question:** {query}
 
-Context:
+**Context from Knowledge Base:**
 {context}
+
+**Instructions:**
+- Use ONLY the information provided in the context above
+- If the context contains relevant information, provide a detailed, structured answer
+- Include specific values, formulas, and relationships when available
+- Explain trade-offs and practical considerations
+- Structure your response with clear sections and markdown formatting
+- If the context doesn't fully answer the question, explain what information is missing
 
 Please provide a comprehensive answer based on the context above."""
     

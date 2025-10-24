@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Dict, Any, Optional, List
 from .llm_client import LLMClient
 from .tool_manager import ToolManager
@@ -97,7 +98,9 @@ Return response as JSON with this structure:
 
         try:
             llm_response = self.llm_client.get_completion(system_prompt, user_input)
-            parsed_result = self.input_parser.extract_json_from_response(llm_response)
+            # Extract content from the response dict
+            llm_content = llm_response.get("content", "") if isinstance(llm_response, dict) else str(llm_response)
+            parsed_result = self.input_parser.extract_json_from_response(llm_content)
             
             # Validate and enhance the parsed result
             if parsed_result.get('intent') == 'action':
@@ -606,7 +609,15 @@ Return response as JSON with this structure:
                     'synthetic_data': result[2],
                     'parameters': result[3]
                 })
-                return {'image_path': plot_result, 'parameters': parameters}
+                
+                # Generate comprehensive model information
+                model_info = self._generate_model_information(result[3], parameters)
+                
+                return {
+                    'image_path': plot_result, 
+                    'parameters': parameters,
+                    'model_info': model_info
+                }
 
             # If result is an image path (for plot_ricker), return a special dict
             if tool_name == 'plot_ricker' and isinstance(result, str) and result.endswith('.png'):
@@ -785,6 +796,185 @@ The model has been created and stored in context for future reference."""
             return "\n".join(examples)
         
         return "- Provide the missing parameters in any format you prefer"
+
+    def _generate_model_information(self, model_params: Dict[str, Any], input_params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Generate comprehensive model information for display to the user.
+        
+        Args:
+            model_params: Parameters returned from the wedge model creation
+            input_params: Original input parameters
+            
+        Returns:
+            Dict[str, Any]: Comprehensive model information
+        """
+        # Calculate tuning thickness
+        v2 = model_params.get('v2', 2500)
+        freq = model_params.get('wavelet_freq', 30)
+        tuning_thickness = v2 / (4 * freq)
+        
+        # Calculate acoustic impedances
+        z1 = model_params.get('v1', 2000) * model_params.get('rho1', 2.2)
+        z2 = model_params.get('v2', 2500) * model_params.get('rho2', 2.4)
+        z3 = model_params.get('v3', 3000) * model_params.get('rho3', 2.6)
+        
+        # Calculate reflection coefficients
+        rc1 = model_params.get('rc1', (z2 - z1) / (z2 + z1))
+        rc2 = model_params.get('rc2', (z3 - z2) / (z3 + z2))
+        
+        # Calculate resolution limit (1/4 wavelength)
+        resolution_limit = tuning_thickness / 2
+        
+        # Calculate wavelength
+        wavelength = v2 / freq
+        
+        # Determine geological interpretation
+        geological_interpretation = self._interpret_geological_scenario(model_params)
+        
+        # Calculate tuning effects
+        tuning_effects = self._analyze_tuning_effects(model_params, tuning_thickness)
+        
+        return {
+            'model_summary': {
+                'model_type': 'Wedge Model',
+                'description': 'Three-layer seismic wedge model for tuning analysis',
+                'created_at': time.time()
+            },
+            'layer_properties': {
+                'layer_1': {
+                    'name': 'Overburden',
+                    'velocity': model_params.get('v1', 2000),
+                    'density': model_params.get('rho1', 2.2),
+                    'impedance': z1,
+                    'unit_velocity': 'm/s',
+                    'unit_density': 'g/cc',
+                    'unit_impedance': 'g·m/s·cc'
+                },
+                'layer_2': {
+                    'name': 'Wedge Layer',
+                    'velocity': model_params.get('v2', 2500),
+                    'density': model_params.get('rho2', 2.4),
+                    'impedance': z2,
+                    'unit_velocity': 'm/s',
+                    'unit_density': 'g/cc',
+                    'unit_impedance': 'g·m/s·cc'
+                },
+                'layer_3': {
+                    'name': 'Basement',
+                    'velocity': model_params.get('v3', 3000),
+                    'density': model_params.get('rho3', 2.6),
+                    'impedance': z3,
+                    'unit_velocity': 'm/s',
+                    'unit_density': 'g/cc',
+                    'unit_impedance': 'g·m/s·cc'
+                }
+            },
+            'wavelet_properties': {
+                'type': model_params.get('wavelet_label', 'Ricker'),
+                'frequency': model_params.get('wavelet_freq', 30),
+                'unit_frequency': 'Hz',
+                'wavelength': wavelength,
+                'unit_wavelength': 'm'
+            },
+            'model_geometry': {
+                'max_thickness': model_params.get('max_thickness', 100),
+                'num_traces': model_params.get('num_traces', 61),
+                'trace_spacing': model_params.get('max_thickness', 100) / (model_params.get('num_traces', 61) - 1),
+                'unit_thickness': 'm',
+                'unit_spacing': 'm'
+            },
+            'seismic_analysis': {
+                'tuning_thickness': tuning_thickness,
+                'resolution_limit': resolution_limit,
+                'wavelength': wavelength,
+                'unit_analysis': 'm',
+                'reflection_coefficients': {
+                    'upper_interface': rc1,
+                    'lower_interface': rc2
+                },
+                'impedance_contrasts': {
+                    'upper': z2 - z1,
+                    'lower': z3 - z2
+                }
+            },
+            'geological_interpretation': geological_interpretation,
+            'tuning_effects': tuning_effects,
+            'model_parameters': {
+                'sampling_interval': model_params.get('dt', 0.1),
+                'unit_sampling': 'ms',
+                'gain': model_params.get('gain', 1.0),
+                'plot_padding': model_params.get('plotpadtime', 50),
+                'unit_padding': 'ms'
+            }
+        }
+    
+    def _interpret_geological_scenario(self, model_params: Dict[str, Any]) -> Dict[str, Any]:
+        """Interpret the geological scenario based on model parameters."""
+        v1, v2, v3 = model_params.get('v1', 2000), model_params.get('v2', 2500), model_params.get('v3', 3000)
+        rho1, rho2, rho3 = model_params.get('rho1', 2.2), model_params.get('rho2', 2.4), model_params.get('rho3', 2.6)
+        
+        # Calculate impedances
+        z1, z2, z3 = v1 * rho1, v2 * rho2, v3 * rho3
+        
+        # Determine scenario type
+        if v2 < v1 and rho2 < rho1:
+            scenario = "Gas Sand"
+            description = "Low velocity and density wedge suggests gas-filled sand"
+        elif v2 < v1 and rho2 > rho1:
+            scenario = "Oil Sand"
+            description = "Low velocity but higher density suggests oil-filled sand"
+        elif v2 > v1 and v2 < v3:
+            scenario = "Water Sand"
+            description = "Medium velocity suggests water-filled sand"
+        elif v2 > v3:
+            scenario = "Carbonate"
+            description = "High velocity suggests carbonate or hard rock"
+        else:
+            scenario = "Mixed Lithology"
+            description = "Complex velocity pattern suggests mixed lithology"
+        
+        return {
+            'scenario': scenario,
+            'description': description,
+            'confidence': 'High' if abs(v2 - v1) > 200 else 'Medium',
+            'key_indicators': {
+                'velocity_trend': f"{v1} → {v2} → {v3} m/s",
+                'density_trend': f"{rho1:.2f} → {rho2:.2f} → {rho3:.2f} g/cc",
+                'impedance_trend': f"{z1:.0f} → {z2:.0f} → {z3:.0f} g·m/s·cc"
+            }
+        }
+    
+    def _analyze_tuning_effects(self, model_params: Dict[str, Any], tuning_thickness: float) -> Dict[str, Any]:
+        """Analyze tuning effects for the model."""
+        max_thickness = model_params.get('max_thickness', 100)
+        freq = model_params.get('wavelet_freq', 30)
+        
+        # Determine tuning regime
+        if max_thickness < tuning_thickness:
+            regime = "Sub-tuning"
+            description = "Layer thickness is below tuning thickness - strong interference effects"
+        elif max_thickness < 2 * tuning_thickness:
+            regime = "Near-tuning"
+            description = "Layer thickness is near tuning thickness - moderate interference"
+        else:
+            regime = "Post-tuning"
+            description = "Layer thickness is above tuning thickness - minimal interference"
+        
+        # Calculate apparent thickness at tuning
+        apparent_thickness_at_tuning = tuning_thickness * 0.7  # Approximate
+        
+        return {
+            'regime': regime,
+            'description': description,
+            'tuning_thickness': tuning_thickness,
+            'apparent_thickness_at_tuning': apparent_thickness_at_tuning,
+            'frequency_dependency': f"Tuning thickness ∝ 1/frequency (currently {freq} Hz)",
+            'resolution_implications': {
+                'below_tuning': "Strong amplitude variations, poor thickness resolution",
+                'at_tuning': "Maximum amplitude, thickness overestimated",
+                'above_tuning': "Good thickness resolution, amplitude stabilizes"
+            }
+        }
 
     def _handle_unclear_input(self, user_input: str) -> str:
         """

@@ -226,7 +226,138 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
     
     def _is_knowledge_question(self, user_input: str) -> bool:
         """
-        Determine if the user input is a knowledge question that should use RAG.
+        Determine if the user input is a knowledge question using LLM-based intent classification.
+        
+        Args:
+            user_input: The user's input text
+            
+        Returns:
+            bool: True if this should use RAG
+        """
+        try:
+            # Use LLM for intent classification
+            return self._classify_intent_with_llm(user_input)
+        except Exception as e:
+            logger.error(f"LLM intent classification failed: {e}")
+            # Fallback to keyword-based detection
+            return self._is_knowledge_question_keywords(user_input)
+    
+    def _classify_intent_with_llm(self, user_input: str) -> bool:
+        """
+        Use LLM to classify whether the input is a knowledge question.
+        
+        Args:
+            user_input: The user's input text
+            
+        Returns:
+            bool: True if this is a knowledge question that should use RAG
+        """
+        system_prompt = """You are an expert at classifying user intents in a seismic modeling chatbot context.
+
+Your task is to determine if a user's input is a KNOWLEDGE QUESTION that should be answered using the knowledge base (RAG), or if it's a TOOL REQUEST that should use specific seismic modeling tools.
+
+KNOWLEDGE QUESTIONS include:
+- Questions asking for explanations, definitions, or descriptions
+- Questions about concepts, principles, or theory
+- Questions about relationships, effects, or trade-offs
+- Questions starting with "what", "how", "why", "explain", "describe", "tell me about"
+- Questions about seismic properties, resolution, frequency effects, etc.
+- Questions seeking educational information or understanding
+
+TOOL REQUESTS include:
+- Requests to create, generate, or make something (e.g., "create a Ricker wavelet")
+- Requests to plot, visualize, or display something
+- Requests to calculate or compute specific values
+- Requests to model or simulate something
+- Requests with specific parameters or values
+
+Examples:
+- "How does frequency affect seismic resolution?" → KNOWLEDGE QUESTION
+- "What is a Ricker wavelet?" → KNOWLEDGE QUESTION  
+- "Create a 30 Hz Ricker wavelet" → TOOL REQUEST
+- "Plot the wedge model" → TOOL REQUEST
+- "What are the trade-offs of higher frequency?" → KNOWLEDGE QUESTION
+- "Make a wedge model with 100m thickness" → TOOL REQUEST
+
+Respond with ONLY "KNOWLEDGE" or "TOOL" - no other text."""
+
+        try:
+            response = self.llm_client.get_simple_completion(system_prompt, user_input)
+            response = response.strip().upper()
+            
+            # Log the classification for debugging
+            logger.debug(f"LLM classified '{user_input[:50]}...' as: {response}")
+            
+            return response == "KNOWLEDGE"
+            
+        except Exception as e:
+            logger.error(f"Error in LLM intent classification: {e}")
+            raise e
+    
+    def classify_intent_detailed(self, user_input: str) -> Dict[str, Any]:
+        """
+        Use LLM to classify user intent with detailed information.
+        
+        Args:
+            user_input: The user's input text
+            
+        Returns:
+            Dict with intent classification and confidence
+        """
+        system_prompt = """You are an expert at classifying user intents in a seismic modeling chatbot context.
+
+Classify the user's intent and provide detailed information about it.
+
+INTENT TYPES:
+1. KNOWLEDGE_QUESTION - Questions seeking explanations, definitions, or educational information
+2. TOOL_REQUEST - Requests to create, plot, calculate, or model something
+3. MIXED - Both knowledge and tool components
+4. UNCLEAR - Ambiguous or unclear intent
+
+For each intent, also determine:
+- CONFIDENCE: How confident you are (0.0 to 1.0)
+- REASONING: Brief explanation of your classification
+- SUGGESTED_ACTION: What the chatbot should do
+
+Respond in JSON format:
+{
+    "intent": "KNOWLEDGE_QUESTION|TOOL_REQUEST|MIXED|UNCLEAR",
+    "confidence": 0.0-1.0,
+    "reasoning": "Brief explanation",
+    "suggested_action": "Use RAG|Use Tools|Ask for clarification|Both"
+}"""
+
+        try:
+            response = self.llm_client.get_simple_completion(system_prompt, user_input)
+            
+            # Try to parse JSON response
+            import json
+            try:
+                result = json.loads(response)
+                logger.debug(f"Detailed classification: {result}")
+                return result
+            except json.JSONDecodeError:
+                # Fallback if JSON parsing fails
+                logger.warning(f"Failed to parse JSON response: {response}")
+                return {
+                    "intent": "UNCLEAR",
+                    "confidence": 0.5,
+                    "reasoning": "Failed to parse LLM response",
+                    "suggested_action": "Ask for clarification"
+                }
+                
+        except Exception as e:
+            logger.error(f"Error in detailed intent classification: {e}")
+            return {
+                "intent": "UNCLEAR", 
+                "confidence": 0.0,
+                "reasoning": f"Error: {str(e)}",
+                "suggested_action": "Use fallback classification"
+            }
+    
+    def _is_knowledge_question_keywords(self, user_input: str) -> bool:
+        """
+        Fallback keyword-based detection for knowledge questions.
         
         Args:
             user_input: The user's input text
@@ -239,7 +370,12 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
             'what is', 'what are', 'explain', 'describe', 'how does', 'why does',
             'tell me about', 'what determines', 'what affects', 'what causes',
             'difference between', 'relationship between', 'definition of',
-            'characteristics of', 'properties of', 'applications of'
+            'characteristics of', 'properties of', 'applications of',
+            'how can', 'what happens', 'what is the', 'what are the',
+            'can you explain', 'can you describe', 'what do you know',
+            'trade-offs', 'advantages', 'disadvantages', 'benefits',
+            'limitations', 'constraints', 'factors', 'influence',
+            'impact', 'effect', 'role', 'significance', 'importance'
         ]
         
         user_input_lower = user_input.lower()
@@ -256,6 +392,19 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
         # Check if it's asking for explanation
         if any(word in user_input_lower for word in ['explain', 'describe', 'tell me']):
             return True
+        
+        # Check for seismic/geophysical concept questions
+        seismic_concepts = [
+            'frequency', 'resolution', 'bandwidth', 'wavelength', 'tuning',
+            'impedance', 'velocity', 'density', 'attenuation', 'quality factor',
+            'reflection', 'refraction', 'wavelet', 'ricker', 'wedge model',
+            'seismic', 'geophysical', 'geology', 'petroleum', 'reservoir'
+        ]
+        
+        # If it contains seismic concepts and is asking for information, use RAG
+        if any(concept in user_input_lower for concept in seismic_concepts):
+            if any(word in user_input_lower for word in ['what', 'how', 'why', 'explain', 'describe', 'tell']):
+                return True
         
         return False
     
@@ -285,12 +434,9 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
                 return response
                 
             elif rag_response.get('rag_type') == 'no_results':
-                # No relevant documents found
-                response = rag_response['generated_response']
-                # Ensure we never return boolean values
-                if isinstance(response, bool):
-                    response = str(response)
-                return response
+                # No relevant documents found - use LLM with general knowledge
+                logger.info("No RAG results found, using LLM with general seismic knowledge")
+                return self._handle_no_rag_results(user_input)
                 
             else:
                 # Error or fallback
@@ -302,12 +448,82 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
                 
         except Exception as e:
             logger.error(f"Error in RAG processing: {e}")
-            # Fallback to regular knowledge base
-            response = self._fallback_knowledge_response(user_input)
-            # Ensure we never return boolean values
-            if isinstance(response, bool):
-                response = str(response)
-            return response
+            # Fallback to LLM with general knowledge
+            return self._handle_no_rag_results(user_input)
+    
+    def _handle_no_rag_results(self, user_input: str) -> str:
+        """
+        Handle cases when RAG doesn't find relevant documents by using LLM with general seismic knowledge.
+        
+        Args:
+            user_input: The user's question
+            
+        Returns:
+            str: LLM-generated response using general knowledge
+        """
+        try:
+            # Create a comprehensive system prompt for seismic knowledge
+            system_prompt = """You are an expert seismic modeling and geophysics assistant with extensive knowledge of:
+
+**Core Seismic Concepts:**
+- Wave propagation physics and properties
+- Frequency, bandwidth, and resolution relationships
+- Velocity, density, and impedance effects
+- Reflection and refraction phenomena
+- Attenuation and quality factor (Q)
+
+**Wavelet Theory:**
+- Ricker wavelets and their frequency characteristics
+- Zero-phase vs minimum-phase wavelets
+- Bandwidth and temporal resolution trade-offs
+- Source signature design principles
+
+**Forward Modeling:**
+- Wedge models and tuning effects
+- Thin bed analysis and resolution limits
+- Synthetic seismogram generation
+- AVO (Amplitude vs Offset) analysis
+
+**Seismic Resolution:**
+- Frequency vs resolution relationships
+- Tuning thickness and interference effects
+- Detection vs resolution limits
+- Trade-offs between penetration and resolution
+
+**Rock Physics:**
+- Velocity-density relationships
+- Fluid effects on seismic properties
+- Porosity and permeability impacts
+- Lithology identification methods
+
+**Practical Applications:**
+- Survey design and acquisition planning
+- Processing parameter optimization
+- Interpretation workflows
+- Reservoir characterization
+
+Guidelines:
+1. Provide accurate, educational explanations
+2. Use specific examples and typical values when relevant
+3. Explain trade-offs and practical considerations
+4. Be clear about limitations and uncertainties
+5. Structure responses logically with clear sections
+6. Include relevant formulas and relationships when helpful
+
+Answer the user's question comprehensively using your knowledge of seismic modeling and geophysics."""
+
+            # Generate response using the LLM
+            response = self.llm_client.get_simple_completion(system_prompt, user_input)
+            
+            # Add a note that this is based on general knowledge
+            response += "\n\n*This response is based on general seismic modeling knowledge.*"
+            
+            return response.strip()
+            
+        except Exception as e:
+            logger.error(f"Error generating LLM response: {e}")
+            # Final fallback to basic knowledge base
+            return self._fallback_knowledge_response(user_input)
     
     def _fallback_knowledge_response(self, user_input: str) -> str:
         """
