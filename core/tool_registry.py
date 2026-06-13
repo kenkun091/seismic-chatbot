@@ -59,7 +59,7 @@ REGISTRY = [
     ToolSpec(
         name="plot_ricker",
         fn=plot_wavelet,
-        description="Plots a wavelet with time domain and frequency domain analysis.",
+        description="Plots a Ricker wavelet with time domain and frequency domain analysis.",
         params={
             "wavelet": {
                 "type": "array",
@@ -287,7 +287,7 @@ REGISTRY = [
     ToolSpec(
         name="calculate_rock_properties",
         fn=calculate_rock_properties,
-        description="Calculates Vp, Vs, density, Vp/Vs, acoustic and shear impedance from porosity (phit) and clay volume (vclay).",
+        description="Calculates Vp, Vs, density (rhob), Vp/Vs ratio, acoustic impedance, and shear impedance from porosity (phit) and clay volume (vclay) using empirical rock physics relationships. Returns all calculated values without plotting.",
         params={
             "phit": {
                 "type": "array",
@@ -314,7 +314,7 @@ REGISTRY = [
     ToolSpec(
         name="rock_physics_rag",
         fn=rock_physics_rag,
-        description="Retrieves rock physics information using RAG.",
+        description="Retrieves rock physics information using RAG (Retrieval-Augmented Generation).",
         params={
             "query": {
                 "type": "string",
@@ -331,7 +331,7 @@ REGISTRY = [
     ToolSpec(
         name="knowledge_rag",
         fn=knowledge_rag,
-        description="Retrieves information from the knowledge base using RAG across all topics.",
+        description="Retrieves information from the knowledge base using RAG (Retrieval-Augmented Generation) across all topics.",
         params={
             "query": {
                 "type": "string",
