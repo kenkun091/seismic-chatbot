@@ -12,7 +12,7 @@ from tools.ricker_tools import create_ricker_wavelet, plot_wavelet
 # TODO(Task 8): re-enable make_ormsby/analyze_wedge entries and real validators
 # from tools.ricker_tools import create_ormsby_wavelet  # does not exist yet (Task 8)
 from tools.wedge_tools import create_wedge_model, plot_wedge_model
-# from tools.wedge_tools import analyze_wedge  # does not exist yet (Task 7/8)
+# from tools.wedge_tools import analyze_wedge  # does not exist yet (Task 8)
 from tools.avo_tools import zoeppritz_reflectivity, shuey_reflectivity, plot_avo_reflectivity
 from tools.rock_physics_tools import calculate_rock_properties, rock_physics_rag
 from tools.rag_tools import knowledge_rag
@@ -24,12 +24,46 @@ class ToolSpec:
     name: str
     fn: Callable
     description: str
-    params: dict
-    required: list
+    params: dict[str, dict]
+    required: list[str]
     defaults: dict = field(default_factory=dict)
     validator: Optional[Callable] = None
     auto_plot: Optional[str] = None
 
+
+_AVO_PARAMS: dict[str, dict] = {
+    "vp1": {
+        "type": "number",
+        "description": "P-wave velocity of the first medium in m/s."
+    },
+    "vs1": {
+        "type": "number",
+        "description": "S-wave velocity of the first medium in m/s."
+    },
+    "rho1": {
+        "type": "number",
+        "description": "Density of the first medium in g/cm³."
+    },
+    "vp2": {
+        "type": "number",
+        "description": "P-wave velocity of the second medium in m/s."
+    },
+    "vs2": {
+        "type": "number",
+        "description": "S-wave velocity of the second medium in m/s."
+    },
+    "rho2": {
+        "type": "number",
+        "description": "Density of the second medium in g/cm³."
+    },
+    "angles": {
+        "type": "array",
+        "items": {
+            "type": "number"
+        },
+        "description": "Array of incidence angles in degrees."
+    },
+}
 
 REGISTRY = [
     ToolSpec(
@@ -181,39 +215,7 @@ REGISTRY = [
         name="zoeppritz_reflectivity",
         fn=zoeppritz_reflectivity,
         description="Calculates reflectivity using the Zoeppritz equations for elastic wave reflection.",
-        params={
-            "vp1": {
-                "type": "number",
-                "description": "P-wave velocity of the first medium in m/s."
-            },
-            "vs1": {
-                "type": "number",
-                "description": "S-wave velocity of the first medium in m/s."
-            },
-            "rho1": {
-                "type": "number",
-                "description": "Density of the first medium in g/cm³."
-            },
-            "vp2": {
-                "type": "number",
-                "description": "P-wave velocity of the second medium in m/s."
-            },
-            "vs2": {
-                "type": "number",
-                "description": "S-wave velocity of the second medium in m/s."
-            },
-            "rho2": {
-                "type": "number",
-                "description": "Density of the second medium in g/cm³."
-            },
-            "angles": {
-                "type": "array",
-                "items": {
-                    "type": "number"
-                },
-                "description": "Array of incidence angles in degrees."
-            },
-        },
+        params=_AVO_PARAMS,
         required=["vp1", "vs1", "rho1", "vp2", "vs2", "rho2", "angles"],
         defaults={},
         validator=None,  # TODO(Task 8): validate_avo
@@ -223,39 +225,7 @@ REGISTRY = [
         name="shuey_reflectivity",
         fn=shuey_reflectivity,
         description="Calculates reflectivity using Shuey's approximation of the Zoeppritz equations.",
-        params={
-            "vp1": {
-                "type": "number",
-                "description": "P-wave velocity of the first medium in m/s."
-            },
-            "vs1": {
-                "type": "number",
-                "description": "S-wave velocity of the first medium in m/s."
-            },
-            "rho1": {
-                "type": "number",
-                "description": "Density of the first medium in g/cm³."
-            },
-            "vp2": {
-                "type": "number",
-                "description": "P-wave velocity of the second medium in m/s."
-            },
-            "vs2": {
-                "type": "number",
-                "description": "S-wave velocity of the second medium in m/s."
-            },
-            "rho2": {
-                "type": "number",
-                "description": "Density of the second medium in g/cm³."
-            },
-            "angles": {
-                "type": "array",
-                "items": {
-                    "type": "number"
-                },
-                "description": "Array of incidence angles in degrees."
-            },
-        },
+        params=_AVO_PARAMS,
         required=["vp1", "vs1", "rho1", "vp2", "vs2", "rho2", "angles"],
         defaults={},
         validator=None,  # TODO(Task 8): validate_avo
@@ -358,7 +328,7 @@ def to_openai_schema(spec: ToolSpec) -> dict:
         "description": spec.description,
         "parameters": {
             "type": "object",
-            "properties": spec.params,
+            "properties": dict(spec.params),
             "required": list(spec.required),
         },
     }
