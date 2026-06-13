@@ -47,3 +47,10 @@ def test_openai_schema_shape():
     assert set(s.keys()) == {"name", "description", "parameters"}
     assert s["parameters"]["type"] == "object"
     assert "properties" in s["parameters"]
+
+
+def test_tool_schemas_module_reexports_registry():
+    from config import tool_schemas
+    from core import tool_registry as reg
+    assert tool_schemas.TOOL_SCHEMAS is reg.TOOL_SCHEMAS
+    assert tool_schemas.TOOL_FUNCTIONS is reg.TOOL_FUNCTIONS
