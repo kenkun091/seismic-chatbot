@@ -51,3 +51,35 @@ def test_no_chaining_for_plain_tool():
     bot.context_manager = _FakeContext({})
     out = bot._handle_automatic_chaining("calculate_rock_properties", {}, (1, 2))
     assert out is None
+
+
+def test_extract_reply_wellformed():
+    bot = _bare_bot()
+    assert bot._extract_reply("<reply>Hello there</reply>") == "Hello there"
+
+
+def test_extract_reply_missing_returns_none():
+    bot = _bare_bot()
+    assert bot._extract_reply("no tags here") is None
+
+
+def test_extract_reply_first_of_multiple():
+    bot = _bare_bot()
+    assert bot._extract_reply("<reply>one</reply><reply>two</reply>") == "one"
+
+
+def test_extract_reply_unclosed_returns_none():
+    bot = _bare_bot()
+    assert bot._extract_reply("<reply>unclosed") is None
+
+
+def test_parse_tool_input_malformed_raises():
+    import pytest
+    bot = _bare_bot()
+    with pytest.raises(ValueError):
+        bot._parse_tool_input("{not valid json")
+
+
+def test_parse_tool_input_valid_json():
+    bot = _bare_bot()
+    assert bot._parse_tool_input('{"frequency": 30}') == {"frequency": 30}
