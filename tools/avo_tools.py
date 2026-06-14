@@ -4,32 +4,40 @@ import matplotlib.pyplot as plt
 
 def zoeppritz_reflectivity(vp1, vs1, rho1, vp2, vs2, rho2, angles):
     """
-    Compute PP reflection coefficients using the full Zoeppritz equations.
-    Args:
-        vp1, vs1, rho1: P-wave velocity, S-wave velocity, and density of upper layer
-        vp2, vs2, rho2: P-wave velocity, S-wave velocity, and density of lower layer
-        angles: array-like, incident angles in degrees
-    Returns:
-        numpy array of reflection coefficients for each angle
+    Exact Zoeppritz PP reflection coefficient (Aki & Richards form).
+    Returns a numpy array of reflection coefficients, one per incidence angle (deg).
+    Post-critical angles return np.nan.
     """
-    angles = np.radians(np.asarray(angles))
+    angles = np.radians(np.asarray(angles, dtype=float))
     rc = []
-    for theta1 in angles:
-        # Snell's law
-        sin_theta2 = vp1 / vp2 * np.sin(theta1)
-        if np.abs(sin_theta2) > 1:
+    for theta1 in np.atleast_1d(angles):
+        p = np.sin(theta1) / vp1  # horizontal slowness (ray parameter)
+        # Snell's law; bail out post-critical for the transmitted P-wave
+        if abs(p * vp2) > 1.0:
             rc.append(np.nan)
             continue
-        theta2 = np.arcsin(sin_theta2)
-        phi1 = np.arcsin(vp1 / vs1 * np.sin(theta1)) if vs1 > 0 else 0
-        phi2 = np.arcsin(vp2 / vs2 * np.sin(theta2)) if vs2 > 0 else 0
-        # Zoeppritz matrix elements (simplified for PP)
-        a = rho2 * (1 - 2 * (vs2 / vp2 * np.sin(theta2)) ** 2) - rho1 * (1 - 2 * (vs1 / vp1 * np.sin(theta1)) ** 2)
-        b = rho2 * (1 - 2 * (vs2 / vp2 * np.sin(theta2)) ** 2) + 2 * rho1 * (vs1 / vp1 * np.sin(theta1)) ** 2
-        c = rho1 * (1 - 2 * (vs1 / vp1 * np.sin(theta1)) ** 2) + 2 * rho2 * (vs2 / vp2 * np.sin(theta2)) ** 2
-        d = 0.5 * (b / vp1 + c / vp2)
-        r = a / d if d != 0 else np.nan
-        rc.append(r)
+        theta2 = np.arcsin(p * vp2)
+        phi1 = np.arcsin(np.clip(p * vs1, -1.0, 1.0))
+        phi2 = np.arcsin(np.clip(p * vs2, -1.0, 1.0))
+
+        a = rho2 * (1 - 2 * np.sin(phi2) ** 2) - rho1 * (1 - 2 * np.sin(phi1) ** 2)
+        b = rho2 * (1 - 2 * np.sin(phi2) ** 2) + 2 * rho1 * np.sin(phi1) ** 2
+        c = rho1 * (1 - 2 * np.sin(phi1) ** 2) + 2 * rho2 * np.sin(phi2) ** 2
+        d = 2 * (rho2 * vs2 ** 2 - rho1 * vs1 ** 2)
+
+        E = b * np.cos(theta1) / vp1 + c * np.cos(theta2) / vp2
+        F = b * np.cos(phi1) / vs1 + c * np.cos(phi2) / vs2
+        G = a - d * (np.cos(theta1) / vp1) * (np.cos(phi2) / vs2)
+        H = a - d * (np.cos(theta2) / vp2) * (np.cos(phi1) / vs1)
+
+        D = E * F + G * H * p ** 2
+
+        rpp = (
+            ((b * np.cos(theta1) / vp1 - c * np.cos(theta2) / vp2) * F
+             - (a + d * (np.cos(theta1) / vp1) * (np.cos(phi2) / vs2)) * H * p ** 2)
+            / D
+        )
+        rc.append(rpp)
     return np.array(rc)
 
 def shuey_reflectivity(vp1, vs1, rho1, vp2, vs2, rho2, angles):
