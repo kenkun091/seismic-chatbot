@@ -59,3 +59,5 @@ def test_warn_if_outside_warns_and_is_silent():
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         warn_if_outside(2500, 300, 8000, "v", "m/s")
+        warn_if_outside(300, 300, 8000, "v", "m/s")   # value == lo: closed interval, no warning
+        warn_if_outside(8000, 300, 8000, "v", "m/s")  # value == hi: closed interval, no warning
