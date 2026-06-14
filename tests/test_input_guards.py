@@ -58,3 +58,21 @@ def test_wedge_accepts_velocity_inversion():
 def test_wedge_warns_on_aliasing():
     with pytest.warns(UserWarning):
         create_wedge_model(wavelet_freq=200, dt=4.0, **_WEDGE)  # nyquist=125 Hz, content=600 Hz
+
+
+from tools.ricker_tools import create_ricker_wavelet, create_ormsby_wavelet
+
+
+def test_ricker_rejects_nonpositive_frequency():
+    with pytest.raises(ValueError):
+        create_ricker_wavelet(frequency=0)
+
+
+def test_ricker_warns_near_nyquist():
+    with pytest.warns(UserWarning):
+        create_ricker_wavelet(frequency=300, dt=0.002)  # nyquist=250 Hz, content=900 Hz
+
+
+def test_ormsby_rejects_nonpositive_dt():
+    with pytest.raises(ValueError):
+        create_ormsby_wavelet(5, 10, 40, 50, dt=0)

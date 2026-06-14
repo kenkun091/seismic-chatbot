@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from scipy import signal
 import tempfile
 import os
+from tools.physics_guards import require_positive, warn_if_aliased
 
 
 def phaserotate(trc, deg):
@@ -29,6 +30,10 @@ def create_ricker_wavelet(
     Returns:
         Tuple of (time_array, wavelet_array)
     """
+    require_positive(frequency, "frequency")
+    require_positive(time_length, "time_length")
+    require_positive(dt, "dt")
+    warn_if_aliased(3.0 * frequency, dt, "ricker wavelet")
     # Create time array
 
     f0 = frequency/1000.
@@ -67,6 +72,9 @@ def create_ormsby_wavelet(
         raise ValueError("Ormsby corner frequencies must satisfy f1 < f2 < f3 < f4.")
     if f1 < 0:
         raise ValueError("Ormsby corner frequencies must be positive.")
+    require_positive(time_length, "time_length")
+    require_positive(dt, "dt")
+    warn_if_aliased(f4, dt, "ormsby wavelet")
     # wedge_tools.ormsby takes length and dt in ms; dt here is seconds.
     t_ms, wavelet = ormsby(time_length, dt * 1000.0, f1, f2, f3, f4)
     return t_ms, wavelet
@@ -92,12 +100,13 @@ def analyze_wavelet(
     NFFT_MIN = 8192
     PADFACTION = 4
     
-    # Calculate frequency spectrum
+    # Calculate frequency spectrum. time_array arrives in ms -> convert to s, so
+    # the sample spacing dt is already in seconds; pass it directly to rfftfreq.
     time_array = time_array/1000.
     dt = time_array[1] - time_array[0]
     nfft = max(wavelet.size*PADFACTION, NFFT_MIN)
     spec = np.fft.rfft(wavelet, nfft)
-    freq = np.fft.rfftfreq(nfft, dt*0.001)
+    freq = np.fft.rfftfreq(nfft, dt)
     amp_spec = np.abs(spec)
     pow_spec = 20* np.log10(amp_spec / amp_spec.max() + EPS)
     
