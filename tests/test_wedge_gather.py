@@ -55,3 +55,28 @@ def test_gather_rejects_bad_angle():
 def test_gather_rejects_empty_angles():
     with pytest.raises(ValueError):
         wedge_avo_gather(angles=[], **GKW)
+
+
+from tools.wedge_tools import analyze_wedge_gather
+
+
+def test_analyze_gather_tuning_and_avo_keys():
+    angles = [0, 15, 30]
+    _, cube, params = wedge_avo_gather(angles=angles, **GKW)  # v2=3000, f=30 -> tuning ~25 m
+    out = analyze_wedge_gather(cube, params)
+    assert abs(out["tuning_thickness"] - 25.0) < 1e-6
+    assert len(out["per_angle"]) == 3
+    assert out["per_angle"][0]["angle"] == 0
+    assert set(out["avo"].keys()) == {"angles", "amplitudes"}
+    assert len(out["avo"]["amplitudes"]) == 3
+
+
+def test_analyze_gather_avo_varies_with_angle():
+    # Gas-sand contrast -> AVO amplitude must vary across angles (not constant).
+    angles = [0, 15, 30, 40]
+    _, cube, params = wedge_avo_gather(
+        angles=angles, max_thickness=60,
+        v1=3000, v2=2300, v3=3200, rho1=2.4, rho2=2.0, rho3=2.4)
+    out = analyze_wedge_gather(cube, params)
+    amps = out["avo"]["amplitudes"]
+    assert max(amps) - min(amps) > 1e-6

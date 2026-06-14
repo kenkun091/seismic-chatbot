@@ -1177,3 +1177,48 @@ def wedge_avo_gather(
         'wavelet_label': wavelet_label,
     }
     return t_model, gather, parameters
+
+
+def analyze_wedge_gather(gather, parameters):
+    """Analyze a wedge AVO gather: per-angle tuning thickness/amplitude and the
+    AVO response (top-interface amplitude vs angle at the isolated max-thickness
+    trace). Returns a dict; no plotting."""
+    gather = np.asarray(gather, dtype=float)
+    nt, ntraces, nangles = gather.shape
+    v2 = parameters["v2"]
+    freq = parameters["wavelet_freq"]
+    if freq <= 0:
+        raise ValueError(f"wavelet_freq must be positive, got {freq}")
+    angles = list(parameters["angles"])
+    max_thickness = parameters["max_thickness"]
+    thickness = np.linspace(0, max_thickness, ntraces)
+    tuning_thickness = v2 / (4.0 * freq)
+
+    per_angle = []
+    for k, ang in enumerate(angles):
+        amp_vs_thickness = np.max(np.abs(gather[:, :, k]), axis=0)
+        idx = int(np.argmax(amp_vs_thickness))
+        per_angle.append({
+            "angle": ang,
+            "tuning_thickness_observed": float(thickness[idx]),
+            "tuning_amplitude": float(amp_vs_thickness[idx]),
+        })
+
+    # AVO at the isolated top interface (max-thickness trace), windowed +/- one
+    # dominant period around interface1_t so the base reflection is excluded.
+    dt = parameters["dt"]
+    t0 = parameters["t0"]
+    interface1_t = np.asarray(parameters["interface1_t"], dtype=float)
+    top_t = float(interface1_t[-1])
+    i_center = int(round((top_t - t0) / dt))
+    i_half = int(round((1000.0 / freq) / dt))
+    i_lo = max(0, i_center - i_half)
+    i_hi = min(nt, i_center + i_half + 1)
+    avo_amps = [float(np.max(np.abs(gather[i_lo:i_hi, -1, k]))) for k in range(nangles)]
+
+    return {
+        "angles": angles,
+        "tuning_thickness": float(tuning_thickness),
+        "per_angle": per_angle,
+        "avo": {"angles": angles, "amplitudes": avo_amps},
+    }
