@@ -42,6 +42,11 @@ def test_gather_rejects_vs_ge_vp():
         wedge_avo_gather(angles=[10], vs1=3000, **GKW)  # vs1>=vp1=2500
 
 
+def test_gather_rejects_vs_equal_vp():
+    with pytest.raises(ValueError):
+        wedge_avo_gather(angles=[10], vs1=2500, **GKW)  # vs1 == vp1 (boundary)
+
+
 def test_gather_rejects_bad_angle():
     with pytest.raises(ValueError):
         wedge_avo_gather(angles=[95], **GKW)

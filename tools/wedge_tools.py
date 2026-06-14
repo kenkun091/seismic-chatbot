@@ -1109,7 +1109,7 @@ def wedge_avo_gather(
     if _ang_err:
         raise ValueError(_ang_err)
     if wv_type == 'ormsby' and ormsby_freq:
-        _content_hz = float(ormsby_freq.split(',')[-1])
+        _content_hz = float(ormsby_freq.split(',')[-1].strip())
     elif wavelet_freq:
         _content_hz = 3.0 * wavelet_freq
     else:
@@ -1154,6 +1154,7 @@ def wedge_avo_gather(
         rc_model = np.zeros((nt, ntraces))
         for itr in range(ntraces):
             idx1 = int(round((interface1_t[itr] - t0) / dt))
+            # +1 matches the create_wedge_model lower-interface convention (one-sample shift)
             idx2 = int(round((interface2_t[itr] - t0) / dt)) + 1
             if 0 <= idx1 < nt:
                 rc_model[idx1, itr] = rc1
