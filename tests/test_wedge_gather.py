@@ -90,3 +90,11 @@ def test_plot_gather_returns_png():
     path = plot_wedge_gather(cube, params)
     assert isinstance(path, str) and path.endswith(".png")
     assert os.path.exists(path)
+
+
+def test_gather_tools_registered():
+    from core.tool_registry import REGISTRY_BY_NAME, TOOL_FUNCTIONS, AUTO_PLOT
+    assert "wedge_avo_gather" in REGISTRY_BY_NAME
+    assert "plot_wedge_gather" in TOOL_FUNCTIONS
+    assert "analyze_wedge_gather" in TOOL_FUNCTIONS
+    assert AUTO_PLOT.get("wedge_avo_gather") == "plot_wedge_gather"

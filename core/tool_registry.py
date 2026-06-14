@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 from tools.ricker_tools import create_ricker_wavelet, create_ormsby_wavelet, plot_wavelet
-from tools.wedge_tools import create_wedge_model, plot_wedge_model, analyze_wedge
+from tools.wedge_tools import create_wedge_model, plot_wedge_model, analyze_wedge, wedge_avo_gather, plot_wedge_gather, analyze_wedge_gather
 from tools.avo_tools import zoeppritz_reflectivity, shuey_reflectivity, plot_avo_reflectivity
 from tools.rock_physics_tools import calculate_rock_properties, rock_physics_rag
 from tools.rag_tools import knowledge_rag
@@ -232,6 +232,52 @@ REGISTRY = [
             "parameters": {"type": "object", "description": "Parameters returned by wedge_model."},
         },
         required=["synthetic_data", "parameters"],
+        defaults={},
+    ),
+    ToolSpec(
+        name="wedge_avo_gather",
+        fn=wedge_avo_gather,
+        description="Builds a wedge AVO angle gather: the synthetic wedge computed per incidence angle (Shuey), returned as a 3-D cube (time x thickness x angle).",
+        params={
+            "max_thickness": {"type": "number", "description": "Maximum thickness of the wedge layer in meters."},
+            "v1": {"type": "number", "description": "P-wave velocity of the first layer in m/s."},
+            "v2": {"type": "number", "description": "P-wave velocity of the second (wedge) layer in m/s."},
+            "v3": {"type": "number", "description": "P-wave velocity of the third layer in m/s."},
+            "rho1": {"type": "number", "description": "Density of the first layer in g/cm³."},
+            "rho2": {"type": "number", "description": "Density of the second (wedge) layer in g/cm³."},
+            "rho3": {"type": "number", "description": "Density of the third layer in g/cm³."},
+            "angles": {"type": "array", "items": {"type": "number"}, "description": "Incidence angles in degrees (one synthetic panel per angle)."},
+            "vs1": {"type": "number", "description": "S-wave velocity of layer 1 in m/s (optional, defaults to v1/2)."},
+            "vs2": {"type": "number", "description": "S-wave velocity of layer 2 in m/s (optional, defaults to v2/2)."},
+            "vs3": {"type": "number", "description": "S-wave velocity of layer 3 in m/s (optional, defaults to v3/2)."},
+            "wavelet_freq": {"type": "number", "description": "Ricker wavelet frequency in Hz (default 30)."},
+            "num_traces": {"type": "integer", "description": "Number of thickness traces (default 61)."},
+        },
+        required=["max_thickness", "v1", "v2", "v3", "rho1", "rho2", "rho3", "angles"],
+        defaults={"wavelet_freq": 30.0, "num_traces": 61},
+        validator=validate_wedge_model,
+        auto_plot="plot_wedge_gather",
+    ),
+    ToolSpec(
+        name="plot_wedge_gather",
+        fn=plot_wedge_gather,
+        description="Plots a wedge AVO gather: amplitude-vs-thickness per angle and amplitude-vs-angle (AVO) at maximum thickness.",
+        params={
+            "gather": {"type": "array", "items": {"type": "array", "items": {"type": "array", "items": {"type": "number"}}}, "description": "3-D gather cube (time x thickness x angle) from wedge_avo_gather."},
+            "parameters": {"type": "object", "description": "Parameters returned by wedge_avo_gather."},
+        },
+        required=["gather", "parameters"],
+        defaults={},
+    ),
+    ToolSpec(
+        name="analyze_wedge_gather",
+        fn=analyze_wedge_gather,
+        description="Analyzes a wedge AVO gather: per-angle tuning thickness/amplitude and the AVO curve at maximum thickness.",
+        params={
+            "gather": {"type": "array", "items": {"type": "array", "items": {"type": "array", "items": {"type": "number"}}}, "description": "3-D gather cube (time x thickness x angle) from wedge_avo_gather."},
+            "parameters": {"type": "object", "description": "Parameters returned by wedge_avo_gather."},
+        },
+        required=["gather", "parameters"],
         defaults={},
     ),
     ToolSpec(
