@@ -101,3 +101,15 @@ def test_validator_allows_velocity_and_density_inversion():
     ok_r, _ = v._validate_density_sequence({"rho1": 2.4, "rho2": 2.0, "rho3": 2.4})
     assert ok_v is True
     assert ok_r is True
+
+
+def test_wedge_rejects_num_traces_below_two():
+    args = dict(max_thickness=50, v1=2500, v2=3000, v3=3500, rho1=2.2, rho2=2.3, rho3=2.4)
+    with pytest.raises(ValueError):
+        create_wedge_model(num_traces=1, **args)
+
+
+def test_avo_warns_for_wide_angles():
+    with pytest.warns(UserWarning):
+        zoeppritz_reflectivity(vp1=2500, vs1=1200, rho1=2.2,
+                               vp2=3000, vs2=1500, rho2=2.4, angles=[10, 60])

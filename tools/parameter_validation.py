@@ -56,21 +56,21 @@ class ParameterValidator:
                 param_type=ParameterType.RANGE,
                 dependencies=['v2', 'v3'],
                 validation_func=self._validate_velocity_sequence,
-                error_message="V1 must be <= V2 <= V3"
+                error_message="V1 must be positive"
             ),
             'v2': ParameterConstraint(
                 min_value=1000, max_value=8000, step=50, unit='m/s',
                 param_type=ParameterType.RANGE,
                 dependencies=['v1', 'v3'],
                 validation_func=self._validate_velocity_sequence,
-                error_message="V2 must be between V1 and V3"
+                error_message="V2 must be positive"
             ),
             'v3': ParameterConstraint(
                 min_value=1000, max_value=8000, step=50, unit='m/s',
                 param_type=ParameterType.RANGE,
                 dependencies=['v1', 'v2'],
                 validation_func=self._validate_velocity_sequence,
-                error_message="V3 must be >= V2 >= V1"
+                error_message="V3 must be positive"
             ),
             
             # Densities (g/cc)
@@ -79,21 +79,21 @@ class ParameterValidator:
                 param_type=ParameterType.RANGE,
                 dependencies=['rho2', 'rho3'],
                 validation_func=self._validate_density_sequence,
-                error_message="Rho1 must be <= Rho2 <= Rho3"
+                error_message="Rho1 must be positive"
             ),
             'rho2': ParameterConstraint(
                 min_value=1.0, max_value=3.5, step=0.05, unit='g/cc',
                 param_type=ParameterType.RANGE,
                 dependencies=['rho1', 'rho3'],
                 validation_func=self._validate_density_sequence,
-                error_message="Rho2 must be between Rho1 and Rho3"
+                error_message="Rho2 must be positive"
             ),
             'rho3': ParameterConstraint(
                 min_value=1.0, max_value=3.5, step=0.05, unit='g/cc',
                 param_type=ParameterType.RANGE,
                 dependencies=['rho1', 'rho2'],
                 validation_func=self._validate_density_sequence,
-                error_message="Rho3 must be >= Rho2 >= Rho1"
+                error_message="Rho3 must be positive"
             ),
             
             # Wavelet parameters
