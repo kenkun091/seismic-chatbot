@@ -1,4 +1,6 @@
 import os
+import json
+import hashlib
 import logging
 from typing import Dict, List, Any, Optional
 import chromadb
@@ -6,6 +8,18 @@ from sentence_transformers import SentenceTransformer
 from config.settings import RAG_EMBEDDING_MODEL, RAG_VECTOR_DB_PATH
 
 logger = logging.getLogger(__name__)
+
+
+def content_id(text: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+    """Deterministic ID derived from a document's content + metadata.
+
+    Same content -> same ID across runs, so repeated population upserts in place
+    instead of appending duplicates (the root cause of unbounded store growth).
+    """
+    h = hashlib.sha1()
+    h.update((text or "").encode("utf-8"))
+    h.update(json.dumps(metadata or {}, sort_keys=True).encode("utf-8"))
+    return h.hexdigest()
 
 class VectorDatabase:
     """
@@ -51,10 +65,15 @@ class VectorDatabase:
             collection = self.client.get_collection(name=name)
             logger.info(f"Using existing collection: {name}")
         except Exception:
-            # Create new collection if it doesn't exist
+            # Create new collection if it doesn't exist. Use COSINE space so the
+            # distance->similarity mapping is interpretable (cosine = 1 - distance)
+            # and the similarity threshold means a real cosine similarity.
             collection = self.client.create_collection(
                 name=name,
-                metadata={"description": "Seismic modeling and geophysics knowledge base"}
+                metadata={
+                    "description": "Seismic modeling and geophysics knowledge base",
+                    "hnsw:space": "cosine",
+                }
             )
             logger.info(f"Created new collection: {name}")
         
@@ -71,22 +90,28 @@ class VectorDatabase:
         """
         if metadata is None:
             metadata = {}
-            
-        # Generate document ID if not provided
+
+        # Deterministic, content-derived ID so re-population is idempotent.
         if doc_id is None:
-            doc_id = f"doc_{len(self.collection.get()['ids']) + 1}"
-        
+            doc_id = content_id(text, metadata)
+
+        # Skip if this exact content is already stored — avoids re-embedding cost
+        # on every startup and prevents duplicate accumulation.
+        existing = self.collection.get(ids=[doc_id])
+        if existing and existing.get("ids"):
+            return
+
         # Create embedding
         embedding = self.embedding_model.encode(text).tolist()
-        
-        # Add to collection
-        self.collection.add(
+
+        # Upsert (idempotent) rather than add (which would duplicate on repeat).
+        self.collection.upsert(
             documents=[text],
             embeddings=[embedding],
             metadatas=[metadata],
             ids=[doc_id]
         )
-        
+
         logger.debug(f"Added document {doc_id} to collection")
     
     def add_documents(self, texts: List[str], metadatas: List[Dict[str, Any]] = None, doc_ids: List[str] = None):
@@ -100,25 +125,33 @@ class VectorDatabase:
         """
         if metadatas is None:
             metadatas = [{} for _ in texts]
-            
+
         if doc_ids is None:
-            doc_ids = [f"doc_{len(self.collection.get()['ids']) + i + 1}" for i in range(len(texts))]
-        
-        # Create embeddings in batch for efficiency
-        embeddings = self.embedding_model.encode(texts).tolist()
-        
-        # Add to collection
-        self.collection.add(
-            documents=texts,
+            doc_ids = [content_id(t, m) for t, m in zip(texts, metadatas)]
+
+        # Embed and upsert only the documents not already stored.
+        existing = set(self.collection.get(ids=doc_ids).get("ids", []))
+        new = [(t, m, i) for t, m, i in zip(texts, metadatas, doc_ids) if i not in existing]
+        if not new:
+            logger.info("All documents already present; nothing to add")
+            return
+
+        new_texts = [t for t, _, _ in new]
+        new_metas = [m for _, m, _ in new]
+        new_ids = [i for _, _, i in new]
+        embeddings = self.embedding_model.encode(new_texts).tolist()
+
+        self.collection.upsert(
+            documents=new_texts,
             embeddings=embeddings,
-            metadatas=metadatas,
-            ids=doc_ids
+            metadatas=new_metas,
+            ids=new_ids
         )
-        
-        logger.info(f"Added {len(texts)} documents to collection")
+
+        logger.info(f"Added {len(new_ids)} documents to collection")
     
-    def search(self, query: str, top_k: int = 5, domain: Optional[str] = None, 
-               similarity_threshold: float = 0.7) -> List[Dict[str, Any]]:
+    def search(self, query: str, top_k: int = 5, domain: Optional[str] = None,
+               similarity_threshold: float = 0.3) -> List[Dict[str, Any]]:
         """
         Search the vector database for documents similar to the query.
         
@@ -155,10 +188,10 @@ class VectorDatabase:
                 results['metadatas'][0], 
                 results['distances'][0]
             )):
-                # Convert distance to similarity score (ChromaDB uses L2 distance)
-                # Lower distance = higher similarity
-                similarity_score = 1.0 / (1.0 + distance)
-                
+                # Cosine space: distance = 1 - cosine_similarity, so similarity is
+                # a true cosine similarity in [-1, 1] (typically [0, 1] here).
+                similarity_score = 1.0 - distance
+
                 # Filter by similarity threshold
                 if similarity_score >= similarity_threshold:
                     processed_results.append({
@@ -189,9 +222,15 @@ class VectorDatabase:
         }
     
     def clear_collection(self):
-        """Clear all documents from the collection."""
-        self.collection.delete(where={})
-        logger.info("Collection cleared")
+        """Clear all documents from the collection.
+
+        Deletes by explicit IDs; ``delete(where={})`` is rejected as an empty
+        filter by newer ChromaDB versions.
+        """
+        ids = self.collection.get().get("ids", [])
+        if ids:
+            self.collection.delete(ids=ids)
+        logger.info(f"Collection cleared ({len(ids)} documents removed)")
     
     def delete_documents(self, doc_ids: List[str]):
         """

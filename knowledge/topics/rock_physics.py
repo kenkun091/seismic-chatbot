@@ -109,9 +109,11 @@ Granite         40-60      20-30      50-70      0.20-0.25
 
 3. **Nur's Critical Porosity Model**:
    - Based on critical porosity concept (φc)
-   - V = Vmatrix × (1 - φ/φc)
-   - φc typically 0.4 for sandstones
-   - Accounts for percolation threshold
+   - The MODULI (not velocity) scale linearly to zero at φc:
+     Kdry = Kmin × (1 - φ/φc) and μdry = μmin × (1 - φ/φc), for 0 ≤ φ ≤ φc
+   - Velocity then follows from V = √(M/ρ) — it is the modulus that is linear in φ
+   - φc typically 0.36-0.40 for sandstones
+   - Modified Voigt (upper) bound between the mineral point and φc
    - Good for granular media
 
 4. **Gardner's Relation**:
@@ -145,11 +147,13 @@ Granite         40-60      20-30      50-70      0.20-0.25
    - Low frequency (static) approximation
    - Shear modulus unaffected by fluids
 
-2. **Key Equation**:
-   - Ksat/K0 - Km/K0 = Kfl/φ(Kfl - K0)
-   - Ksat: saturated rock bulk modulus
-   - K0: dry rock bulk modulus
-   - Km: mineral matrix bulk modulus
+2. **Key Equation** (low-frequency Gassmann):
+   - Ratio form: Ksat/(Kmin − Ksat) = Kdry/(Kmin − Kdry) + Kfl/[φ(Kmin − Kfl)]
+   - Forward form: Ksat = Kdry + (1 − Kdry/Kmin)² / [φ/Kfl + (1−φ)/Kmin − Kdry/Kmin²]
+   - Shear modulus is unchanged by fluid: μsat = μdry
+   - Ksat: saturated-rock (frame + fluid) bulk modulus
+   - Kdry: dry-frame (drained) bulk modulus
+   - Kmin: mineral/grain bulk modulus
    - Kfl: fluid bulk modulus
    - φ: porosity
 

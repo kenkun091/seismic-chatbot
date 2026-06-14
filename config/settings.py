@@ -16,7 +16,7 @@ DATABRICKS_BASE_URL = os.environ.get("DATABRICKS_BASE_URL")
 RAG_CHUNK_SIZE = 1000
 RAG_CHUNK_OVERLAP = 200
 RAG_TOP_K = 5
-RAG_SIMILARITY_THRESHOLD = 0.7
+RAG_SIMILARITY_THRESHOLD = 0.3  # cosine similarity (collection uses cosine space)
 RAG_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 RAG_VECTOR_DB_PATH = "./chroma_db"
 
