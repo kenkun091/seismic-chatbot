@@ -278,7 +278,7 @@ def pick_interface_and_amp(data, interface1_t, interface2_t, t0, nt, dt):
 
     return hor1_tpicks, hor2_tpicks, hor3_tpicks, amp_picks
 
-def create_figure(figsize=(12, 14)):
+def create_figure(figsize=(16, 18)):
     params = {
         'legend.fontsize': 'x-large',
         'axes.labelsize': 16,
@@ -438,6 +438,48 @@ def make_symmetric_wavelet(t, wavelet):
         wavelet = np.hstack([wavelet, np.zeros(ndiff)])
 
     return t, wavelet
+
+def parse_and_prep_wavelet(wavelet_source, dt):
+    """
+    Build a (time_ms, amplitudes) wavelet from a user-supplied source.
+
+    wavelet_source may be:
+      - a comma/space/newline-separated numeric string,
+      - a list/tuple/np.ndarray of numbers,
+      - a path to a .txt/.csv file with one number per line or a delimited row.
+
+    Returns (t_ms, wavelet) where t_ms is centered on zero with spacing dt.
+    Raises ValueError on unparseable input or fewer than 2 samples.
+    """
+    import os as _os
+
+    if isinstance(wavelet_source, (list, tuple, np.ndarray)):
+        arr = np.asarray(wavelet_source, dtype=float)
+    elif isinstance(wavelet_source, str) and _os.path.isfile(wavelet_source):
+        try:
+            arr = np.genfromtxt(wavelet_source, delimiter=",").ravel()
+            arr = arr[np.isfinite(arr)].astype(float)
+        except Exception as e:
+            raise ValueError(f"Could not read wavelet file: {e}")
+    elif isinstance(wavelet_source, str):
+        tokens = [tok for tok in wavelet_source.replace(",", " ").split() if tok]
+        try:
+            arr = np.array([float(tok) for tok in tokens], dtype=float)
+        except ValueError:
+            raise ValueError("Custom wavelet string must contain only numbers.")
+    else:
+        raise ValueError(f"Unsupported wavelet source type: {type(wavelet_source)}")
+
+    if arr.size < 2:
+        raise ValueError("Custom wavelet must have at least 2 samples.")
+    if not np.isfinite(arr).all():
+        raise ValueError("Custom wavelet contains non-finite values.")
+
+    nt = arr.size
+    # t spacing uses dt directly, centered on zero (matches ricker/ormsby convention).
+    t_ms = (np.arange(nt) - nt // 2) * dt
+    return t_ms, arr
+
 
 def gen_wavelet(dt, wv_type, ricker_freq, ormsby_freq, wavelet_str, wavelet_fname, phase_rot, wavelet_length=500):
     if wv_type == 'ricker':
@@ -707,7 +749,7 @@ def wedge_model(zunit, max_thickness, wv_type, ricker_freq, ormsby_freq, wavelet
     make_plot(
         zunit, data, wavelet_label, vp_layers, rho_layers, thickness,
         interface1_t, interface2_t, t0, nt, dt, z_min, z_max, dz, gain,
-        plotpadtime, thickness_domain, fig_fname, ''
+        plotpadtime, thickness_domain, fig_fname, csv_fname
     )
 
     return t, rc_model, data, {
@@ -716,7 +758,7 @@ def wedge_model(zunit, max_thickness, wv_type, ricker_freq, ormsby_freq, wavelet
         'rho1': rho1, 'rho2': rho2, 'rho3': rho3,
         'vs1': vs1, 'vs2': vs2, 'vs3': vs3,
         'rc1': rc1, 'rc2': rc2,
-        'wavelet_freq': ricker_freq if wv_type == 'ricker' else float(ormsby_freq.split(',')[0]),
+        'wavelet_freq': ricker_freq if wv_type == 'ricker' else (float(ormsby_freq.split(',')[0]) if wv_type == 'ormsby' and ormsby_freq else ricker_freq),
         'dt': dt,
         'num_traces': ntraces,
         'wavelet_label': wavelet_label,
@@ -754,7 +796,9 @@ def create_wedge_model(
     vs1: Optional[float] = None,
     vs2: Optional[float] = None,
     vs3: Optional[float] = None,
-    incident_angle: Union[float, list] = 0
+    incident_angle: Union[float, list] = 0,
+    export_path: Optional[str] = None,
+    wavelet_str: str = ''
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Dict]:
     """
     Create a wedge model with specified parameters and return the path to the plot.
@@ -776,7 +820,9 @@ def create_wedge_model(
         zunit: Unit for depth/thickness (e.g., 'm', 'ft')
         vs1, vs2, vs3: S-wave velocities for the three layers (units/s). If None, estimated as vp/2
         incident_angle: Incident angle(s) in degrees for Shuey calculation. Can be a single value or a list
-        
+        export_path: Optional path for CSV export of tuning curves
+        wavelet_str: Custom wavelet as a comma/space-separated numeric string (used when wv_type='custom')
+
     Returns:
         Tuple containing time array, model, synthetic data, and parameters dictionary
     """
@@ -787,7 +833,7 @@ def create_wedge_model(
         wv_type=wv_type,
         ricker_freq=wavelet_freq,
         ormsby_freq=ormsby_freq,
-        wavelet_str='',
+        wavelet_str=wavelet_str,
         wavelet_fname='',
         phase_rot=phase_rot,
         vp1=v1,
@@ -800,7 +846,7 @@ def create_wedge_model(
         plotpadtime=plotpadtime,
         thickness_domain=thickness_domain,
         fig_fname='',
-        csv_fname='',
+        csv_fname=export_path or '',
         vs1=vs1,
         vs2=vs2,
         vs3=vs3,
@@ -906,8 +952,30 @@ def analyze_wedge_model(
     
     if show_plot:
         plot_wedge_analysis(time_array, synthetic_data, analysis, parameters)
-    
+
     return analysis
+
+
+def analyze_wedge(synthetic_data, parameters):
+    """
+    Registry-facing wedge analysis: tuning thickness, tuning amplitude,
+    resolution limit, and the amplitude-vs-thickness curve. No plotting.
+    """
+    synthetic_data = np.asarray(synthetic_data, dtype=float)
+    v2 = parameters["v2"]
+    freq = parameters["wavelet_freq"]
+    tuning_thickness = v2 / (4.0 * freq)
+    max_amplitudes = np.max(np.abs(synthetic_data), axis=0)
+    thicknesses = np.linspace(0, parameters["max_thickness"], parameters["num_traces"])
+    tuning_idx = int(np.argmax(max_amplitudes))
+    return {
+        "tuning_thickness": tuning_thickness,
+        "tuning_amplitude": float(max_amplitudes[tuning_idx]),
+        "resolution_limit": tuning_thickness / 2.0,
+        "max_amplitudes": max_amplitudes.tolist(),
+        "thicknesses": thicknesses.tolist(),
+    }
+
 
 def plot_wedge_analysis(
     time_array: np.ndarray,
