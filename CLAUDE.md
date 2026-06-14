@@ -103,6 +103,19 @@ Addressed in `tools/wedge_tools.py` / `tools/avo_tools.py` / `tools/ricker_tools
 
 **Still open** (scientific *completeness*, not bugs — see the gap scan): the wedge is single-angle only (no true offset/angle gather), fixed 3-layer/2-interface, no anisotropy / attenuation (Q) / multiples / NMO; and there are still no physical-validity guards (e.g. `vs < vp`, positivity, Nyquist) on the AVO/wedge compute inputs.
 
+## Wedge AVO angle gather
+
+`tools/wedge_tools.py` provides a true angle gather alongside the single-angle wedge:
+- `wedge_avo_gather(...)` → `(time_array, gather, parameters)` where `gather` is a 3-D
+  cube `(nt × num_traces × nangles)`; per-angle **Shuey** reflectivity, geometry built once.
+  The single-angle `wedge_model` (2-D) is untouched.
+- `analyze_wedge_gather(gather, parameters)` → per-angle tuning thickness/amplitude plus the
+  AVO curve (top-interface amplitude vs angle at the isolated max-thickness trace).
+- `plot_wedge_gather(gather, parameters)` → two-panel PNG (tuning curves per angle; AVO vs angle).
+
+Registered in `core/tool_registry.py` (auto-plot `wedge_avo_gather` → `plot_wedge_gather`);
+the chatbot stores `last_wedge_gather` and chains to the plot. Covered by `tests/test_wedge_gather.py`.
+
 ## The tool layer is registry-driven (the important architecture)
 
 **`core/tool_registry.py` is the single source of truth.** Every LLM-facing tool is declared once as a frozen `ToolSpec` in the `REGISTRY` list (name, `fn`, description, JSON-schema `params`, `required`, `defaults`, optional `validator`, optional `auto_plot`). Everything else is *derived* at import time:
