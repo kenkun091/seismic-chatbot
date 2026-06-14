@@ -38,6 +38,7 @@ def test_analyze_wedge_tuning_thickness():
     # tuning thickness = v2 / (4 * freq) = 3000 / 120 = 25.0 m
     assert abs(out["tuning_thickness"] - 25.0) < 1e-6
     assert "max_amplitudes" in out
+    assert len(out["max_amplitudes"]) == len(out["thicknesses"])
 
 
 def test_csv_export_writes_file(tmp_path):

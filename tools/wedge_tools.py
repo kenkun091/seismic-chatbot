@@ -448,14 +448,12 @@ def parse_and_prep_wavelet(wavelet_source, dt):
       - a list/tuple/np.ndarray of numbers,
       - a path to a .txt/.csv file with one number per line or a delimited row.
 
-    Returns (t_ms, wavelet) where t_ms is centered on zero with spacing dt.
+    Returns (t, wavelet) where t is centered on zero with spacing dt.
     Raises ValueError on unparseable input or fewer than 2 samples.
     """
-    import os as _os
-
     if isinstance(wavelet_source, (list, tuple, np.ndarray)):
         arr = np.asarray(wavelet_source, dtype=float)
-    elif isinstance(wavelet_source, str) and _os.path.isfile(wavelet_source):
+    elif isinstance(wavelet_source, str) and os.path.isfile(wavelet_source):
         try:
             arr = np.genfromtxt(wavelet_source, delimiter=",").ravel()
             arr = arr[np.isfinite(arr)].astype(float)
@@ -477,8 +475,8 @@ def parse_and_prep_wavelet(wavelet_source, dt):
 
     nt = arr.size
     # t spacing uses dt directly, centered on zero (matches ricker/ormsby convention).
-    t_ms = (np.arange(nt) - nt // 2) * dt
-    return t_ms, arr
+    t = (np.arange(nt) - nt // 2) * dt
+    return t, arr
 
 
 def gen_wavelet(dt, wv_type, ricker_freq, ormsby_freq, wavelet_str, wavelet_fname, phase_rot, wavelet_length=500):
@@ -752,13 +750,20 @@ def wedge_model(zunit, max_thickness, wv_type, ricker_freq, ormsby_freq, wavelet
         plotpadtime, thickness_domain, fig_fname, csv_fname
     )
 
+    if wv_type == 'ricker':
+        _wavelet_freq = ricker_freq
+    elif wv_type == 'ormsby' and ormsby_freq:
+        _wavelet_freq = float(ormsby_freq.split(',')[0])
+    else:
+        _wavelet_freq = ricker_freq  # custom: no extractable freq, use supplied value
+
     return t, rc_model, data, {
         'max_thickness': max_thickness,
         'v1': vp1, 'v2': vp2, 'v3': vp3,
         'rho1': rho1, 'rho2': rho2, 'rho3': rho3,
         'vs1': vs1, 'vs2': vs2, 'vs3': vs3,
         'rc1': rc1, 'rc2': rc2,
-        'wavelet_freq': ricker_freq if wv_type == 'ricker' else (float(ormsby_freq.split(',')[0]) if wv_type == 'ormsby' and ormsby_freq else ricker_freq),
+        'wavelet_freq': _wavelet_freq,
         'dt': dt,
         'num_traces': ntraces,
         'wavelet_label': wavelet_label,
@@ -964,9 +969,12 @@ def analyze_wedge(synthetic_data, parameters):
     synthetic_data = np.asarray(synthetic_data, dtype=float)
     v2 = parameters["v2"]
     freq = parameters["wavelet_freq"]
+    if freq <= 0:
+        raise ValueError(f"wavelet_freq must be positive, got {freq}")
     tuning_thickness = v2 / (4.0 * freq)
     max_amplitudes = np.max(np.abs(synthetic_data), axis=0)
-    thicknesses = np.linspace(0, parameters["max_thickness"], parameters["num_traces"])
+    num_traces = synthetic_data.shape[1]
+    thicknesses = np.linspace(0, parameters["max_thickness"], num_traces)
     tuning_idx = int(np.argmax(max_amplitudes))
     return {
         "tuning_thickness": tuning_thickness,
