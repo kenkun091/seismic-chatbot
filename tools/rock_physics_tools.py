@@ -1,5 +1,6 @@
 # Tools for rock physics calculations
 import numpy as np
+import warnings
 from typing import Dict, List, Any, Optional, Union
 from knowledge.vector_db import VectorDatabase
 from knowledge.topics.rock_physics import ROCK_PHYSICS_KNOWLEDGE
@@ -20,84 +21,112 @@ def _format_value(value: Union[float, np.ndarray], precision: int = 3) -> str:
     else:
         return f"{value:.{precision}f}"
 
+# --- Reference moduli/densities (Mavko, Mukerji & Dvorkin, Rock Physics Handbook) ---
+_K_QUARTZ = 37.0e9   # Pa, mineral bulk modulus of quartz
+_K_CLAY = 21.0e9     # Pa, mineral bulk modulus of clay (ill-defined; central value)
+_RHO_QUARTZ = 2.65   # g/cc
+_RHO_CLAY = 2.58     # g/cc
+
+# Fluid bulk modulus (Pa) and density (g/cc), Batzle-Wang typical reservoir values.
+_FLUIDS = {
+    'water': (2.2e9, 1.0),
+    'brine': (2.2e9, 1.0),
+    'oil':   (1.0e9, 0.8),
+    'gas':   (0.05e9, 0.2),
+}
+
+
+def gassmann_sat(K_dry, K0, K_fl, phi):
+    """Gassmann forward: saturated bulk modulus from dry frame, mineral, fluid, porosity.
+
+    K_sat = K_dry + (1 - K_dry/K0)^2 / (phi/K_fl + (1-phi)/K0 - K_dry/K0^2)
+    (Mavko et al., Rock Physics Handbook.)
+    """
+    return K_dry + (1.0 - K_dry / K0) ** 2 / (phi / K_fl + (1.0 - phi) / K0 - K_dry / K0 ** 2)
+
+
+def gassmann_dry(K_sat, K0, K_fl, phi):
+    """Gassmann inverse: recover the dry-frame modulus from a saturated modulus
+    (Kumar, 2006). Exact inverse of ``gassmann_sat``."""
+    num = K_sat * (phi * K0 / K_fl + 1.0 - phi) - K0
+    den = phi * K0 / K_fl + K_sat / K0 - 1.0 - phi
+    return num / den
+
+
 def calculate_rock_properties(phit, vclay, fluid_type='water', print_results=True):
     """
-    Calculate Vp, Vs, density (rhob), impedance, and Vp/Vs ratio from porosity (phit) and clay volume (vclay)
-    using empirical rock physics relationships.
-    
+    Estimate Vp, Vs, density, Vp/Vs and impedances from porosity and clay volume.
+
+    Model: water-saturated Vp/Vs from the Han, Nur & Morgan (1986) regressions
+    (clay-bearing sandstones, ~40 MPa); bulk density from mass balance; and, for
+    oil/gas, proper Gassmann fluid substitution (shear modulus held
+    fluid-independent, so gas LOWERS Vp but slightly RAISES Vs via lower density).
+
     Args:
-        phit: float or array-like, porosity (fraction, 0-1)
-        vclay: float or array-like, clay volume (fraction, 0-1)
-        fluid_type: str, fluid type ('water', 'oil', or 'gas')
-        print_results: bool, whether to print the calculated values
-        
+        phit: float or array-like, porosity (fraction). Clipped to the Han
+            validity range [0, 0.35].
+        vclay: float or array-like, clay volume (fraction). Clipped to [0, 0.5].
+        fluid_type: 'water'/'brine', 'oil', or 'gas'.
+        print_results: whether to print the calculated values.
+
     Returns:
-        tuple: (vp, vs, rhob, vp_vs_ratio, ai, si) - P-wave velocity (m/s), S-wave velocity (m/s), 
-               bulk density (g/cc), Vp/Vs ratio, acoustic impedance (×10⁶ kg/m²·s), 
-               and shear impedance (×10⁶ kg/m²·s)
+        tuple: (vp, vs, rhob, vp_vs_ratio, ai, si) - Vp (m/s), Vs (m/s),
+               bulk density (g/cc), Vp/Vs, acoustic impedance and shear impedance
+               (each in ×10⁶ kg/m²·s, i.e. MRayl).
     """
-    # Convert inputs to numpy arrays if they aren't already
-    phit = np.asarray(phit)
-    vclay = np.asarray(vclay)
-    
-    # Ensure values are within valid ranges
-    phit = np.clip(phit, 0.01, 0.4)
-    vclay = np.clip(vclay, 0.05, 0.95)
-    
-    # Calculate matrix properties based on clay content
-    # Linear interpolation between sandstone and shale end members
-    # Sandstone properties (vclay = 0)
-    vp_sand_matrix = 5500  # m/s
-    vs_sand_matrix = 3400  # m/s
-    rho_sand_matrix = 2.65  # g/cc
-    
-    # Shale properties (vclay = 1)
-    vp_shale_matrix = 3800  # m/s
-    vs_shale_matrix = 2000  # m/s
-    rho_shale_matrix = 2.55  # g/cc
-    
-    # Interpolate matrix properties based on clay content
-    vp_matrix = vp_sand_matrix * (1 - vclay) + vp_shale_matrix * vclay
-    vs_matrix = vs_sand_matrix * (1 - vclay) + vs_shale_matrix * vclay
-    rho_matrix = rho_sand_matrix * (1 - vclay) + rho_shale_matrix * vclay
-    
-    # Fluid properties
-    if fluid_type.lower() == 'water':
-        rho_fluid = 1.0  # g/cc
-        k_fluid = 2.2e9  # Pa, bulk modulus of water
-    elif fluid_type.lower() == 'oil':
-        rho_fluid = 0.8  # g/cc
-        k_fluid = 1.5e9  # Pa, bulk modulus of oil
-    elif fluid_type.lower() == 'gas':
-        rho_fluid = 0.2  # g/cc
-        k_fluid = 0.1e9  # Pa, bulk modulus of gas
-    else:
+    phit = np.asarray(phit, dtype=float)
+    vclay = np.asarray(vclay, dtype=float)
+
+    # REJECT physically impossible fractions.
+    if np.any(phit < 0) or np.any(phit > 1):
+        raise ValueError("phit (porosity) must be within [0, 1]")
+    if np.any(vclay < 0) or np.any(vclay > 1):
+        raise ValueError("vclay (clay volume) must be within [0, 1]")
+
+    # WARN (not silent) when outside the Han (1986) validity range, then clip.
+    if np.any(phit > 0.35):
+        warnings.warn("phit beyond the Han (1986) validity range (>0.35); clipping to 0.35.", stacklevel=2)
+    if np.any(vclay > 0.5):
+        warnings.warn("vclay beyond the Han (1986) validity range (>0.5); clipping to 0.5.", stacklevel=2)
+    phit = np.clip(phit, 0.0, 0.35)
+    vclay = np.clip(vclay, 0.0, 0.5)
+
+    fluid = fluid_type.lower()
+    if fluid not in _FLUIDS:
         raise ValueError(f"Unknown fluid type: {fluid_type}. Use 'water', 'oil', or 'gas'.")
-    
-    # Calculate bulk density using simple mixing law
-    rhob = rho_matrix * (1 - phit) + rho_fluid * phit
-    
-    # Calculate velocities using modified Wyllie time-average equation with clay effect
-    # Apply Raymer-Hunt-Gardner modifications for better accuracy
-    # Vp calculation
-    vp_factor = 1.0 - 0.5 * vclay  # Clay effect factor
-    vp = vp_matrix * (1 - phit)**2 * vp_factor
-    
-    # Vs calculation (using Vp/Vs ratio that varies with clay content)
-    vp_vs_ratio = 1.5 + 0.5 * vclay  # Increases with clay content
-    vs = vp / vp_vs_ratio
-    
-    # Apply fluid effects (simplified Gassmann)
-    # Reduce velocities for gas-filled porosity
-    if fluid_type.lower() == 'gas':
-        vp = vp * (1.0 - 0.3 * phit)  # Stronger effect on Vp
-        vs = vs * (1.0 - 0.1 * phit)  # Weaker effect on Vs
-    
-    # Calculate Vp/Vs ratio
+
+    # --- Water-saturated velocities: Han, Nur & Morgan (1986), 40 MPa (km/s -> m/s) ---
+    vp_w = (5.59 - 6.93 * phit - 2.18 * vclay) * 1000.0
+    vs_w = (3.52 - 4.91 * phit - 1.89 * vclay) * 1000.0
+
+    # --- Grain density and mineral bulk modulus (quartz/clay mix) ---
+    rho_matrix = _RHO_QUARTZ * (1 - vclay) + _RHO_CLAY * vclay  # g/cc
+    k0_voigt = (1 - vclay) * _K_QUARTZ + vclay * _K_CLAY
+    k0_reuss = 1.0 / ((1 - vclay) / _K_QUARTZ + vclay / _K_CLAY)
+    K0 = 0.5 * (k0_voigt + k0_reuss)  # Voigt-Reuss-Hill mineral modulus
+
+    # --- In-situ (water-saturated) moduli ---
+    K_fl_w, rho_fl_w = _FLUIDS['water']
+    rho_w_sat = (rho_matrix * (1 - phit) + rho_fl_w * phit) * 1000.0  # kg/m^3
+    mu = rho_w_sat * vs_w ** 2                       # shear modulus, fluid-independent
+    K_sat_w = rho_w_sat * vp_w ** 2 - (4.0 / 3.0) * mu
+
+    K_fl_t, rho_fl_t = _FLUIDS[fluid]
+    if fluid in ('water', 'brine'):
+        vp, vs = vp_w, vs_w
+        rhob = rho_matrix * (1 - phit) + rho_fl_w * phit
+    else:
+        # Invert Gassmann to the dry frame, then forward-substitute the target fluid.
+        K_dry = gassmann_dry(K_sat_w, K0, K_fl_w, phit)
+        K_sat_t = gassmann_sat(K_dry, K0, K_fl_t, phit)
+        rhob = rho_matrix * (1 - phit) + rho_fl_t * phit       # g/cc
+        rho_t_sat = rhob * 1000.0
+        vp = np.sqrt((K_sat_t + (4.0 / 3.0) * mu) / rho_t_sat)
+        vs = np.sqrt(mu / rho_t_sat)                            # mu unchanged by fluid
+
     vp_vs_ratio = vp / vs
-    
-    # Calculate impedance values
-    # Convert density from g/cc to kg/m³ for impedance calculation
+
+    # Calculate impedance values (density g/cc -> kg/m³)
     rho_kg_m3 = rhob * 1000
     ai = rho_kg_m3 * vp / 1e6  # Acoustic impedance in ×10⁶ kg/m²·s
     si = rho_kg_m3 * vs / 1e6  # Shear impedance in ×10⁶ kg/m²·s
@@ -117,7 +146,7 @@ def calculate_rock_properties(phit, vclay, fluid_type='water', print_results=Tru
         print(f"  Acoustic Impedance (AI): {_format_value(ai, 2)} × 10⁶ kg/m²·s")
         print(f"  Shear Impedance (SI): {_format_value(si, 2)} × 10⁶ kg/m²·s")
         print(f"  Matrix Density: {_format_value(rho_matrix, 3)} g/cc")
-        print(f"  Fluid Density: {_format_value(rho_fluid, 3)} g/cc")
+        print(f"  Fluid Density: {_format_value(np.asarray(rho_fl_t, dtype=float), 3)} g/cc")
         print("=" * 40)
     
     return vp, vs, rhob, vp_vs_ratio, ai, si
@@ -191,11 +220,13 @@ def _get_rock_physics_db():
     if _rock_physics_db is None:
         _rock_physics_db = VectorDatabase()
         
-        # Add rock physics knowledge to the database
+        # Add rock physics knowledge to the database. Tag with `domain` for
+        # consistency with the other populate paths so domain-filtered search
+        # can match these documents.
         for topic, content in ROCK_PHYSICS_KNOWLEDGE.items():
             _rock_physics_db.add_document(
                 text=content,
-                metadata={'topic': topic}
+                metadata={'domain': 'rock_physics', 'topic': topic}
             )
     
     return _rock_physics_db

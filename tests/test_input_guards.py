@@ -76,3 +76,17 @@ def test_ricker_warns_near_nyquist():
 def test_ormsby_rejects_nonpositive_dt():
     with pytest.raises(ValueError):
         create_ormsby_wavelet(5, 10, 40, 50, dt=0)
+
+
+from tools.rock_physics_tools import calculate_rock_properties
+
+
+def test_rock_rejects_porosity_gt_1():
+    with pytest.raises(ValueError):
+        calculate_rock_properties(1.5, 0.2, print_results=False)
+
+
+def test_rock_warns_outside_han_range_and_clips():
+    with pytest.warns(UserWarning):
+        vp, vs, rhob, *_ = calculate_rock_properties(0.45, 0.2, print_results=False)
+    assert float(vp) > float(vs) > 0
