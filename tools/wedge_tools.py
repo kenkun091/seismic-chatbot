@@ -1,4 +1,5 @@
 import math
+import warnings
 import numpy as np
 import scipy.signal
 
@@ -8,6 +9,8 @@ from typing import Optional, Tuple, Dict, Union
 
 # Import from avo_tools
 from .avo_tools import shuey_reflectivity
+from .path_safety import safe_export_path
+from .physics_guards import require_elastic_medium, require_positive, warn_if_aliased, warn_if_outside
 
 import matplotlib
 matplotlib.use('Agg')
@@ -95,7 +98,7 @@ def resample(t, trc, dt_new):
     freq_new = np.fft.rfftfreq(nfft_new, dt_new*0.001)
 
     re = np.interp(freq_new, freq, spec.real, left = 0, right =0)
-    im = np.interp(freq_new, freq, spec.img, left =0, right = 0)
+    im = np.interp(freq_new, freq, spec.imag, left =0, right = 0)
 
     spec_intp = re + 1j*im
 
@@ -174,7 +177,7 @@ def choose_pick_mode(data, interface_t, halfwin, t0, dt):
     avg_amp /= last_n
 
     if abs(avg_amp) < AMP_THRESHOLD:
-        return 'zero-crossing';
+        return 'zero-crossings';
     elif avg_amp >= AMP_THRESHOLD:
         return 'peaks';
     else:
@@ -206,6 +209,7 @@ def pick_zero_crossings(data, ref_interface, top_limit, base_limit, t0, dt):
             it1 += 1
         if pick:
             tpicks[itr] = pick
+    return tpicks
 
 
 def peak_peaks_or_troughs(data, top_limit, base_limit, t0, dt, pickmode):
@@ -264,7 +268,7 @@ def pick_interface_and_amp(data, interface1_t, interface2_t, t0, nt, dt):
         hor3_tpicks = np.empty_like(interface1_t)
         for itr in range(ntraces):
             hor3_tpicks[itr] = t_op(data[it_top[itr]:it_base[itr], itr]) + it_top[itr]
-            amp_picks = amp_op(data[it_top[itr]:it_base[itr], itr])
+            amp_picks[itr] = amp_op(data[it_top[itr]:it_base[itr], itr])
         hor3_tpicks = t0 + hor3_tpicks*dt
     else:
         top_limit = np.full_like(interface1_t, t0)
@@ -422,7 +426,7 @@ def make_plot(zunit, data, wavelet_label, vp_layers, rho_layers, thickness, \
         np.savetxt(csv_fname, curves, fmt = '%g',delimiter = ',', header = header, comments = '')
 
 def make_symmetric_wavelet(t, wavelet):
-    if np.alltrue(t<0) or np.alltrue(t>=0):
+    if np.all(t<0) or np.all(t>=0):
         raise Exception('Input wavelet needs to be sampled at both negative and positive time values.')
     
     nt_positive = (t>0).sum()
@@ -585,7 +589,7 @@ def plot_wavelet(dt, wv_type, ricker_freq, ormsby_freq, wavelet_str, wavelet_fna
     plt.savefig(fig_fname)
     plt.close()
 
-def wedge_model(zunit, max_thickness, wv_type, ricker_freq, ormsby_freq, wavelet_str, wavelet_fname, phase_rot, vp1, vp2, vp3, rho1, rho2, rho3, gain, plotpadtime, thickness_domain, fig_fname, csv_fname, vs1=None, vs2=None, vs3=None, incident_angle=0):
+def wedge_model(zunit, max_thickness, wv_type, ricker_freq, ormsby_freq, wavelet_str, wavelet_fname, phase_rot, vp1, vp2, vp3, rho1, rho2, rho3, gain, plotpadtime, thickness_domain, fig_fname, csv_fname, vs1=None, vs2=None, vs3=None, incident_angle=0, num_traces=61, dt=0.1):
     """
     Creates a wedge model for seismic analysis.
     
@@ -611,21 +615,35 @@ def wedge_model(zunit, max_thickness, wv_type, ricker_freq, ormsby_freq, wavelet
     # Create arrays for layer properties
     vp_layers = [vp1, vp2, vp3]
     rho_layers = [rho1, rho2, rho3]
-    vs_layers = [vs1 if vs1 is not None else vp1/2.0, 
-                vs2 if vs2 is not None else vp2/2.0, 
+    vs_layers = [vs1 if vs1 is not None else vp1/2.0,
+                vs2 if vs2 is not None else vp2/2.0,
                 vs3 if vs3 is not None else vp3/2.0]
-    
+
+    # --- Physical-validity guards ---
+    require_positive(max_thickness, "max_thickness")
+    require_positive(dt, "dt")
+    if num_traces < 2:
+        raise ValueError(f"num_traces must be >= 2 (got {num_traces})")
+    for _i in range(3):
+        require_elastic_medium(vp_layers[_i], vs_layers[_i], rho_layers[_i], f"layer {_i + 1}")
+        warn_if_outside(vp_layers[_i], 300, 8000, f"vp layer {_i + 1}", "m/s")
+    # Nyquist / aliasing warning (dt is in ms here -> convert to seconds)
+    if wv_type == 'ormsby' and ormsby_freq:
+        _content_hz = float(ormsby_freq.split(',')[-1])
+    else:
+        _content_hz = 3.0 * ricker_freq
+    warn_if_aliased(_content_hz, dt / 1000.0, "wedge wavelet")
+
     # Calculate acoustic impedance for each layer
     imp_layers = [vp_layers[i]*rho_layers[i] for i in range(3)]
 
     # Set up model geometry
     z_min = 0
     z_max = max_thickness
-    ntraces = 61  # Number of traces in the model
+    ntraces = num_traces  # Number of traces in the model (from caller)
     dz = (z_max - z_min)/(ntraces - 1)  # Trace spacing
 
-    # Set time sampling interval
-    dt = 0.1  # ms
+    # Time sampling interval (ms) is taken from the dt argument (default 0.1 ms)
 
     # Generate wavelet based on specified parameters
     t, wavelet, wavelet_label = gen_wavelet(dt, wv_type, ricker_freq, ormsby_freq, wavelet_str, wavelet_fname, phase_rot, wavelet_length=256.0)
@@ -667,9 +685,17 @@ def wedge_model(zunit, max_thickness, wv_type, ricker_freq, ormsby_freq, wavelet
             angles=angles
         )
         
-        # Use the first angle's reflectivity or average if multiple angles
-        rc1 = rc1_array[0] if len(angles) == 1 else np.mean(rc1_array)
-        rc2 = rc2_array[0] if len(angles) == 1 else np.mean(rc2_array)
+        # The wedge is a single-angle product. Averaging reflection coefficients
+        # across angles is not physically meaningful, so use the first angle and
+        # warn if several were supplied (model each angle separately for a gather).
+        if len(angles) > 1:
+            warnings.warn(
+                f"wedge_model received {len(angles)} angles; using only the first "
+                f"({angles[0]}°). Model each angle separately for an angle gather.",
+                stacklevel=2,
+            )
+        rc1 = rc1_array[0]
+        rc2 = rc2_array[0]
     else:
         # Default to simple acoustic impedance method
         rc1 = (imp_layers[1] - imp_layers[0])/(imp_layers[1] + imp_layers[0])  # Upper interface
@@ -753,7 +779,10 @@ def wedge_model(zunit, max_thickness, wv_type, ricker_freq, ormsby_freq, wavelet
     if wv_type == 'ricker':
         _wavelet_freq = ricker_freq
     elif wv_type == 'ormsby' and ormsby_freq:
-        _wavelet_freq = float(ormsby_freq.split(',')[0])
+        # Dominant (peak) frequency of an Ormsby wavelet is ~ the centre of the
+        # passband, (f2+f3)/2 — NOT the low-cut corner f1.
+        _corners = [float(x) for x in ormsby_freq.split(',')]
+        _wavelet_freq = (_corners[1] + _corners[2]) / 2.0 if len(_corners) >= 4 else _corners[0]
     else:
         _wavelet_freq = ricker_freq  # custom: no extractable freq, use supplied value
 
@@ -831,6 +860,18 @@ def create_wedge_model(
     Returns:
         Tuple containing time array, model, synthetic data, and parameters dictionary
     """
+    # Confine LLM/user-supplied export_path to a sandbox directory so a tool call
+    # cannot write CSV to an arbitrary filesystem location (path traversal / overwrite).
+    safe_csv = ''
+    if export_path:
+        import tempfile
+        export_base = os.environ.get(
+            "SEISMIC_EXPORT_DIR", os.path.join(tempfile.gettempdir(), "seismic_exports")
+        )
+        os.makedirs(export_base, exist_ok=True)
+        safe_csv = safe_export_path(export_path, export_base)
+        os.makedirs(os.path.dirname(safe_csv), exist_ok=True)
+
     # Call the internal wedge_model function that does the work
     time_array, model, synthetic, parameters, _ = wedge_model(
         zunit=zunit,
@@ -851,11 +892,13 @@ def create_wedge_model(
         plotpadtime=plotpadtime,
         thickness_domain=thickness_domain,
         fig_fname='',
-        csv_fname=export_path or '',
+        csv_fname=safe_csv or '',
         vs1=vs1,
         vs2=vs2,
         vs3=vs3,
-        incident_angle=incident_angle
+        incident_angle=incident_angle,
+        num_traces=num_traces,
+        dt=dt,
     )
     
     return time_array, model, synthetic, parameters

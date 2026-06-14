@@ -430,8 +430,6 @@ def validate_wedge_model(params: _Dict[str, _Any]) -> _Tuple[bool, str]:
         v = params.get(f"v{i}")
         if not v or v <= 0:
             return False, f"Velocity v{i} must be positive"
-        if v > 6500 or v < 1500:
-            return False, f"Invalid v{i}: must be between 1500 and 6500 m/s"
     for i in range(1, 4):
         rho = params.get(f"rho{i}")
         if not rho or rho <= 0:
