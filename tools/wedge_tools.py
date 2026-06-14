@@ -1222,3 +1222,44 @@ def analyze_wedge_gather(gather, parameters):
         "per_angle": per_angle,
         "avo": {"angles": angles, "amplitudes": avo_amps},
     }
+
+
+def plot_wedge_gather(gather, parameters, figsize=None):
+    """Plot a wedge AVO gather: amplitude-vs-thickness per angle (top panel) and
+    amplitude-vs-angle at the isolated max-thickness trace (bottom panel).
+    Returns the PNG path."""
+    import tempfile
+
+    gather = np.asarray(gather, dtype=float)
+    nt, ntraces, nangles = gather.shape
+    angles = list(parameters["angles"])
+    max_thickness = parameters["max_thickness"]
+    zunit = parameters.get("zunit", "m")
+    thickness = np.linspace(0, max_thickness, ntraces)
+    analysis = analyze_wedge_gather(gather, parameters)
+
+    if figsize is None:
+        figsize = (10, 10)
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=figsize)
+
+    for k, ang in enumerate(angles):
+        amp_vs_thickness = np.max(np.abs(gather[:, :, k]), axis=0)
+        ax1.plot(thickness, amp_vs_thickness, label=f"{ang}°")
+    ax1.set_xlabel(f"Thickness ({zunit})")
+    ax1.set_ylabel("Amplitude")
+    ax1.set_title("Tuning curves by incidence angle")
+    ax1.grid(True, alpha=0.3)
+    ax1.legend(title="angle")
+
+    ax2.plot(analysis["avo"]["angles"], analysis["avo"]["amplitudes"], "o-")
+    ax2.set_xlabel("Incidence angle (deg)")
+    ax2.set_ylabel("Top-interface amplitude")
+    ax2.set_title("AVO at maximum thickness (isolated top interface)")
+    ax2.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    fig_fd, fig_fname = tempfile.mkstemp(suffix=".png")
+    os.close(fig_fd)
+    plt.savefig(fig_fname)
+    plt.close()
+    return fig_fname

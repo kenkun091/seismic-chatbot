@@ -80,3 +80,13 @@ def test_analyze_gather_avo_varies_with_angle():
     out = analyze_wedge_gather(cube, params)
     amps = out["avo"]["amplitudes"]
     assert max(amps) - min(amps) > 1e-6
+
+
+from tools.wedge_tools import plot_wedge_gather
+
+
+def test_plot_gather_returns_png():
+    _, cube, params = wedge_avo_gather(angles=[0, 20, 40], **GKW)
+    path = plot_wedge_gather(cube, params)
+    assert isinstance(path, str) and path.endswith(".png")
+    assert os.path.exists(path)
