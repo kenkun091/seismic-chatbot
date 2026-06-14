@@ -1,6 +1,10 @@
 # Tools for AVO analysis
+import warnings
+
 import numpy as np
 import matplotlib.pyplot as plt
+
+from tools.physics_guards import require_elastic_medium, angles_error
 
 def zoeppritz_reflectivity(vp1, vs1, rho1, vp2, vs2, rho2, angles):
     """
@@ -8,7 +12,15 @@ def zoeppritz_reflectivity(vp1, vs1, rho1, vp2, vs2, rho2, angles):
     Returns a numpy array of reflection coefficients, one per incidence angle (deg).
     Post-critical angles return np.nan.
     """
-    angles = np.radians(np.asarray(angles, dtype=float))
+    require_elastic_medium(vp1, vs1, rho1, "upper medium")
+    require_elastic_medium(vp2, vs2, rho2, "lower medium")
+    angles = np.atleast_1d(np.asarray(angles, dtype=float))
+    _ang_err = angles_error(angles)
+    if _ang_err:
+        raise ValueError(_ang_err)
+    if np.any(angles > 45):
+        warnings.warn("AVO: incidence angles > 45 deg; results may be less reliable.", stacklevel=2)
+    angles = np.radians(angles)
     rc = []
     for theta1 in np.atleast_1d(angles):
         p = np.sin(theta1) / vp1  # horizontal slowness (ray parameter)
@@ -50,7 +62,15 @@ def shuey_reflectivity(vp1, vs1, rho1, vp2, vs2, rho2, angles):
     Returns:
         numpy array of reflection coefficients for each angle
     """
-    angles = np.radians(np.asarray(angles))
+    require_elastic_medium(vp1, vs1, rho1, "upper medium")
+    require_elastic_medium(vp2, vs2, rho2, "lower medium")
+    angles = np.atleast_1d(np.asarray(angles, dtype=float))
+    _ang_err = angles_error(angles)
+    if _ang_err:
+        raise ValueError(_ang_err)
+    if np.any(angles > 45):
+        warnings.warn("AVO: incidence angles > 45 deg; results may be less reliable.", stacklevel=2)
+    angles = np.radians(angles)
     # Shuey coefficients
     d_vp = vp2 - vp1
     d_vs = vs2 - vs1
@@ -84,7 +104,9 @@ def plot_avo_reflectivity(angles, rc, output_path=None):
     plt.xlabel('Incident Angle (degrees)')
     plt.ylabel('Reflection Coefficient')
     plt.title('AVO Reflectivity Curve')
-    plt.ylim(-0.3,0.3)
+    # Autoscale the y-axis: a fixed +/-0.3 clip would crop bright spots / class-IV
+    # anomalies. Keep RC=0 visible for reference.
+    plt.axhline(0.0, color='k', linewidth=0.5, alpha=0.4)
     plt.grid(True, alpha=0.3)
     plt.legend()
     

@@ -409,6 +409,7 @@ def suggest_parameter_corrections(parameters: Dict[str, Union[float, int]]) -> D
 
 # --- Per-tool validators referenced by core.tool_registry ---
 from typing import Tuple as _Tuple, Dict as _Dict, Any as _Any
+from tools.physics_guards import elastic_medium_error as _elastic_medium_error
 
 
 def validate_make_ricker(params: _Dict[str, _Any]) -> _Tuple[bool, str]:
@@ -442,5 +443,9 @@ def validate_avo(params: _Dict[str, _Any]) -> _Tuple[bool, str]:
     for p in ["vp1", "vs1", "rho1", "vp2", "vs2", "rho2", "angles"]:
         if p not in params:
             return False, f"Missing required parameter: {p}"
+    err = (_elastic_medium_error(params["vp1"], params["vs1"], params["rho1"], "upper medium")
+           or _elastic_medium_error(params["vp2"], params["vs2"], params["rho2"], "lower medium"))
+    if err:
+        return False, err
     return True, ""
 
