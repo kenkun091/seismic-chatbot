@@ -278,7 +278,7 @@ def pick_interface_and_amp(data, interface1_t, interface2_t, t0, nt, dt):
 
     return hor1_tpicks, hor2_tpicks, hor3_tpicks, amp_picks
 
-def create_figure(figsize=(16, 18)):
+def create_figure(figsize=(12, 14)):
     params = {
         'legend.fontsize': 'x-large',
         'axes.labelsize': 16,
