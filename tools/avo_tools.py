@@ -88,12 +88,3 @@ def plot_avo_reflectivity(angles, rc, output_path=None):
     plt.close()
     
     return output_path
-
-
-def calculate_AnB(rc, angles):
-    """
-    Calculate A and B from reflection coefficients and angles.
-    """
-    A = rc[0]
-    B = rc[1]
-    return A, B
