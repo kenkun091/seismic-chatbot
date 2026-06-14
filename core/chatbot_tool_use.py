@@ -68,6 +68,7 @@ Available tools:
 - plot_ricker: Plots a Ricker wavelet with time and frequency analysis
 - wedge_model: Creates a wedge model for seismic analysis
 - plot_wedge_model: Plots wedge model results
+- wedge_avo_gather: Builds an AVO angle gather (synthetic wedge per incidence angle) and plots tuning-vs-angle + AVO
 - analyze_wedge: Analyzes a wedge model for tuning thickness and amplitude-vs-thickness
 - zoeppritz_reflectivity: Calculates reflectivity using Zoeppritz equations
 - shuey_reflectivity: Calculates reflectivity using Shuey's approximation
@@ -700,7 +701,7 @@ within the constraints above."""
         """
         return (isinstance(tool_result, str) and 
                 tool_result.endswith(".png") and
-                tool_name in ["plot_ricker", "plot_wedge_model", "plot_avo_reflectivity", "plot_rock_properties"])
+                tool_name in ["plot_ricker", "plot_wedge_model", "plot_avo_reflectivity", "plot_rock_properties", "plot_wedge_gather"])
     
     def _handle_automatic_chaining(self, tool_name: str, tool_input: Dict[str, Any], tool_result: Any) -> Optional[Dict[str, Any]]:
         """
@@ -728,6 +729,11 @@ within the constraints above."""
                 if not (last and "synthetic" in last and "parameters" in last):
                     return None
                 plot_input = {"synthetic_data": last["synthetic"], "parameters": last["parameters"]}
+            elif tool_name == "wedge_avo_gather":
+                last = self.context_manager.get_context("last_wedge_gather")
+                if not (last and "gather" in last and "parameters" in last):
+                    return None
+                plot_input = {"gather": last["gather"], "parameters": last["parameters"]}
             elif tool_name in ("zoeppritz_reflectivity", "shuey_reflectivity"):
                 if not (isinstance(tool_result, np.ndarray) and "angles" in tool_input):
                     return None
@@ -795,7 +801,18 @@ within the constraints above."""
                         "parameters": parameters,
                         "input_params": tool_input
                     })
-                    
+
+            elif tool_name == "wedge_avo_gather":
+                # Store gather data for automatic plotting (3-tuple return)
+                if isinstance(tool_result, tuple) and len(tool_result) == 3:
+                    time_array, gather, parameters = tool_result
+                    self.context_manager.set_context("last_wedge_gather", {
+                        "time_array": time_array,
+                        "gather": gather,
+                        "parameters": parameters,
+                        "input_params": tool_input
+                    })
+
             elif tool_name in ["zoeppritz_reflectivity", "shuey_reflectivity"]:
                 # Store AVO reflectivity data for reference
                 if isinstance(tool_result, np.ndarray) and "angles" in tool_input:

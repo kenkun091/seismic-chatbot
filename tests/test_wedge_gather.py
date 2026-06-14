@@ -98,3 +98,21 @@ def test_gather_tools_registered():
     assert "plot_wedge_gather" in TOOL_FUNCTIONS
     assert "analyze_wedge_gather" in TOOL_FUNCTIONS
     assert AUTO_PLOT.get("wedge_avo_gather") == "plot_wedge_gather"
+
+
+def _bot():
+    from core.chatbot_tool_use import SeismicChatBotToolUse
+    return SeismicChatBotToolUse(llm_client=object(), knowledge_base=object())
+
+
+def test_gather_context_and_chaining():
+    bot = _bot()
+    t, cube, params = wedge_avo_gather(angles=[0, 20], **GKW)
+    result = (t, cube, params)
+    bot._update_context("wedge_avo_gather", {"angles": [0, 20]}, result)
+    stored = bot.context_manager.get_context("last_wedge_gather")
+    assert stored is not None and "gather" in stored and "parameters" in stored
+
+    chained = bot._handle_automatic_chaining("wedge_avo_gather", {"angles": [0, 20]}, result)
+    assert chained is not None and "image_path" in chained
+    assert chained["image_path"].endswith(".png")
