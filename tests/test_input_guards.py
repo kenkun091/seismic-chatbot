@@ -90,3 +90,14 @@ def test_rock_warns_outside_han_range_and_clips():
     with pytest.warns(UserWarning):
         vp, vs, rhob, *_ = calculate_rock_properties(0.45, 0.2, print_results=False)
     assert float(vp) > float(vs) > 0
+
+
+from tools.parameter_validation import ParameterValidator
+
+
+def test_validator_allows_velocity_and_density_inversion():
+    v = ParameterValidator()
+    ok_v, _ = v._validate_velocity_sequence({"v1": 3000, "v2": 2300, "v3": 3200})
+    ok_r, _ = v._validate_density_sequence({"rho1": 2.4, "rho2": 2.0, "rho3": 2.4})
+    assert ok_v is True
+    assert ok_r is True

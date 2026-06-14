@@ -158,22 +158,20 @@ class ParameterValidator:
         }
     
     def _validate_velocity_sequence(self, params: Dict[str, float]) -> Tuple[bool, str]:
-        """Validate that velocities are in ascending order."""
-        v1, v2, v3 = params.get('v1', 0), params.get('v2', 0), params.get('v3', 0)
-        
-        if v1 <= v2 <= v3:
-            return True, ""
-        else:
-            return False, f"Velocity sequence invalid: V1({v1}) <= V2({v2}) <= V3({v3})"
-    
+        """Velocities must be positive; ordering (inversions) is allowed."""
+        for k in ('v1', 'v2', 'v3'):
+            v = params.get(k, 0)
+            if v <= 0:
+                return False, f"Velocity {k} must be positive (got {v})"
+        return True, ""
+
     def _validate_density_sequence(self, params: Dict[str, float]) -> Tuple[bool, str]:
-        """Validate that densities are in ascending order."""
-        rho1, rho2, rho3 = params.get('rho1', 0), params.get('rho2', 0), params.get('rho3', 0)
-        
-        if rho1 <= rho2 <= rho3:
-            return True, ""
-        else:
-            return False, f"Density sequence invalid: Rho1({rho1}) <= Rho2({rho2}) <= Rho3({rho3})"
+        """Densities must be positive; ordering (inversions) is allowed."""
+        for k in ('rho1', 'rho2', 'rho3'):
+            r = params.get(k, 0)
+            if r <= 0:
+                return False, f"Density {k} must be positive (got {r})"
+        return True, ""
     
     def _validate_frequency(self, params: Dict[str, float]) -> Tuple[bool, str]:
         """Validate frequency is reasonable for seismic applications."""

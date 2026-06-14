@@ -25,8 +25,10 @@ def test_wedge_ok():
 
 
 def test_wedge_bad_velocity():
+    # validate_wedge_model enforces positivity only (not ordering/range);
+    # v1=0 is non-positive and must be rejected
     ok, msg = validate_wedge_model({
-        "max_thickness": 50, "v1": 100, "v2": 3000, "v3": 3500,
+        "max_thickness": 50, "v1": 0, "v2": 3000, "v3": 3500,
         "rho1": 2.2, "rho2": 2.3, "rho3": 2.4,
     })
     assert not ok and "v1" in msg
