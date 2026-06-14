@@ -183,7 +183,7 @@ class ParameterLinkManager:
         if link.link_type == LinkType.EQUAL:
             return source_value
         
-        elif link.link_type == LinkType.PROPIONAL:
+        elif link.link_type == LinkType.PROPORTIONAL:
             if link.source_param == source_param:
                 return source_value * link.factor + link.offset
             else:

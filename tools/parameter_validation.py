@@ -396,14 +396,51 @@ def validate_seismic_parameters(parameters: Dict[str, Union[float, int]]) -> Tup
 def suggest_parameter_corrections(parameters: Dict[str, Union[float, int]]) -> Dict[str, Any]:
     """
     Convenience function to suggest parameter corrections.
-    
+
     Args:
         parameters: Dictionary of parameter values
-        
+
     Returns:
         Dictionary with suggested corrections
     """
     validator = get_global_validator()
     return validator.suggest_corrections(parameters)
 
+
+# --- Per-tool validators referenced by core.tool_registry ---
+from typing import Tuple as _Tuple, Dict as _Dict, Any as _Any
+
+
+def validate_make_ricker(params: _Dict[str, _Any]) -> _Tuple[bool, str]:
+    freq = params.get("frequency")
+    if not freq or freq <= 0 or freq > 1000:
+        return False, "Frequency must be between 0 and 1000 Hz"
+    dt = params.get("dt", 0.001)
+    if dt <= 0 or dt > 0.1:
+        return False, "Sampling interval (dt) must be between 0 and 0.1 seconds"
+    return True, ""
+
+
+def validate_wedge_model(params: _Dict[str, _Any]) -> _Tuple[bool, str]:
+    thickness = params.get("max_thickness")
+    if not thickness or thickness <= 0:
+        return False, "Maximum thickness must be positive"
+    for i in range(1, 4):
+        v = params.get(f"v{i}")
+        if not v or v <= 0:
+            return False, f"Velocity v{i} must be positive"
+        if v > 6500 or v < 1500:
+            return False, f"Invalid v{i}: must be between 1500 and 6500 m/s"
+    for i in range(1, 4):
+        rho = params.get(f"rho{i}")
+        if not rho or rho <= 0:
+            return False, f"Density rho{i} must be positive"
+    return True, ""
+
+
+def validate_avo(params: _Dict[str, _Any]) -> _Tuple[bool, str]:
+    for p in ["vp1", "vs1", "rho1", "vp2", "vs2", "rho2", "angles"]:
+        if p not in params:
+            return False, f"Missing required parameter: {p}"
+    return True, ""
 
