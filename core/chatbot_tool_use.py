@@ -20,18 +20,35 @@ class SeismicChatBotToolUse:
     3. Tool execution and result processing
     """
     
-    def __init__(self):
-        """Initialize the seismic chatbot with all required components."""
-        self.llm_client = LLMClient()
-        self.tool_manager = ToolManager()
-        self.context_manager = ContextManager()
-        self.knowledge_base = KnowledgeBase()
-        
+    def __init__(self, llm_client=None, tool_manager=None, knowledge_base=None):
+        """Initialize the seismic chatbot.
+
+        The LLM client, tool manager, and knowledge base are conversation-stateless
+        and expensive to build, so they may be injected (shared across sessions).
+        The context manager holds per-conversation state and is ALWAYS fresh, so a
+        new instance is fully isolated from any other session. Use ``new_session()``
+        to spawn an isolated session that reuses the shared components.
+        """
+        self.llm_client = llm_client or LLMClient()
+        self.tool_manager = tool_manager or ToolManager()
+        self.knowledge_base = knowledge_base or KnowledgeBase()
+        self.context_manager = ContextManager()  # per-session, never shared
+
         # Get tool schemas for the LLM
         self.tools = self.tool_manager.get_tool_schemas()
-        
+
         # System prompt following the notebook pattern
         self.system_prompt = self._create_system_prompt()
+
+    def new_session(self) -> "SeismicChatBotToolUse":
+        """Return a session-isolated chatbot that shares the heavy, stateless
+        components (LLM client, tools, knowledge base) but owns a fresh
+        conversation context and token counter."""
+        return SeismicChatBotToolUse(
+            llm_client=self.llm_client,
+            tool_manager=self.tool_manager,
+            knowledge_base=self.knowledge_base,
+        )
 
     def _create_system_prompt(self) -> str:
         """
@@ -505,23 +522,27 @@ Respond in JSON format:
 - Interpretation workflows
 - Reservoir characterization
 
-Guidelines:
-1. Provide accurate, educational explanations
-2. Use specific examples and typical values when relevant
-3. Explain trade-offs and practical considerations
-4. Be clear about limitations and uncertainties
-5. Structure responses logically with clear sections
-6. Include relevant formulas and relationships when helpful
+IMPORTANT — this question was NOT matched to the curated knowledge base, so you are
+answering from general knowledge only. To avoid misleading the user:
+1. Do NOT fabricate or invent specific numeric constants, coefficients, equations, or
+   citations. If you are not confident in an exact value, say so rather than making one up.
+2. Prefer qualitative explanations and clearly-labelled typical ranges over precise numbers.
+3. Explicitly flag uncertainty and recommend authoritative references where appropriate.
+4. Provide accurate, educational explanations; structure them logically.
 
-Answer the user's question comprehensively using your knowledge of seismic modeling and geophysics."""
+Answer the user's question using your general knowledge of seismic modeling and geophysics,
+within the constraints above."""
 
             # Generate response using the LLM
             response = self.llm_client.get_simple_completion(system_prompt, user_input)
-            
-            # Add a note that this is based on general knowledge
-            response += "\n\n*This response is based on general seismic modeling knowledge.*"
-            
-            return response.strip()
+
+            # Clearly label the answer as NOT grounded in the curated knowledge base.
+            disclaimer = (
+                "\n\n*⚠️ Not from the curated knowledge base — this is a general-knowledge "
+                "answer and may contain inaccuracies. Verify specific values against an "
+                "authoritative reference.*"
+            )
+            return (response + disclaimer).strip()
             
         except Exception as e:
             logger.error(f"Error generating LLM response: {e}")

@@ -4,40 +4,37 @@ from config.example_prompts import EXAMPLE_PROMPTS, search_prompts, get_random_p
 
 def create_chat_interface():
     """Create and return the Gradio chat interface using the tool use pattern."""
-    seismic_bot = SeismicChatBotToolUse()
-    
-    # Reset token usage when interface is created (browser refresh)
-    seismic_bot.context_manager.clear_context()
-    
-    def respond(message, chat_history):
-        """Process user message and generate response using tool use pattern."""
+    # Build the heavy, conversation-stateless components ONCE. Each browser
+    # session gets its own isolated chatbot (fresh context + token counter) via
+    # new_session(), held in gr.State so users never share conversation state.
+    base_bot = SeismicChatBotToolUse()
+
+    def respond(message, chat_history, session_bot):
+        """Process a user message using a per-session chatbot (isolated context)."""
+        if session_bot is None:
+            session_bot = base_bot.new_session()
+
+        chat_history = chat_history or []
+        chat_history.append([message, None])
         try:
-            response = seismic_bot.process_single_input(message)
-            
-            # Convert to Gradio 3.x compatible format
-            chat_history.append([message, None])
-            
-            # Handle different response types
+            response = session_bot.process_single_input(message)
+
+            # Handle different response types (Gradio 3.x format)
             if isinstance(response, dict) and 'image_path' in response:
-                # Handle image response
                 chat_history[-1][1] = (response['image_path'],)
             elif isinstance(response, str):
-                # Handle text response
                 chat_history[-1][1] = response
             else:
-                # Handle other response types
                 chat_history[-1][1] = str(response)
-                
-            # Get token usage for display
-            token_usage = seismic_bot.context_manager.get_token_usage()
-            return "", chat_history, f"Prompt: {token_usage['prompt_tokens']} | Completion: {token_usage['completion_tokens']} | Total: {token_usage['total_tokens']}"  
-                
+
+            # Per-session token usage for display
+            token_usage = session_bot.context_manager.get_token_usage()
+            token_str = f"Prompt: {token_usage['prompt_tokens']} | Completion: {token_usage['completion_tokens']} | Total: {token_usage['total_tokens']}"
+            return "", chat_history, token_str, session_bot
+
         except Exception as e:
-            error_msg = f"Error processing request: {str(e)}"
-            chat_history[-1][1] = error_msg
-            
-            # Return empty token usage on error
-            return "", chat_history, ""
+            chat_history[-1][1] = f"Error processing request: {str(e)}"
+            return "", chat_history, "", session_bot
     
     def copy_prompt(prompt_text):
         """Copy prompt to clipboard and return it for the textbox."""
@@ -69,6 +66,9 @@ def create_chat_interface():
         return html_content
     
     with gr.Blocks(title="Seismic Modeling Assistant - Tool Use") as demo:
+        # Per-session chatbot, isolated per browser connection.
+        session_state = gr.State(None)
+
         gr.Markdown("""
         # 🌊 Seismic Modeling Assistant (Tool Use Pattern)
         
@@ -217,8 +217,8 @@ def create_chat_interface():
                 - "Calculate Zoeppritz reflectivity for gas sand"
                 """)
         
-        submit.click(respond, [msg, chat_display], [msg, chat_display, token_usage_display])
-        msg.submit(respond, [msg, chat_display], [msg, chat_display, token_usage_display])
+        submit.click(respond, [msg, chat_display, session_state], [msg, chat_display, token_usage_display, session_state])
+        msg.submit(respond, [msg, chat_display, session_state], [msg, chat_display, token_usage_display, session_state])
     
     return demo
 

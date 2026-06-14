@@ -3,34 +3,38 @@ from core.chatbot import SeismicChatBot
 
 def create_chat_interface():
     """Create and return the Gradio chat interface using the legacy implementation."""
-    seismic_bot = SeismicChatBot()
-    
-    def respond(message, chat_history):
-        """Process user message and generate response using legacy pattern."""
+    # Build heavy components once; each browser session gets an isolated chatbot
+    # (fresh context) via new_session(), held in gr.State — no shared state.
+    base_bot = SeismicChatBot()
+
+    def respond(message, chat_history, session_bot):
+        """Process user message using a per-session chatbot (isolated context)."""
+        if session_bot is None:
+            session_bot = base_bot.new_session()
+
+        chat_history = chat_history or []
+        chat_history.append({"role": "user", "content": message})
         try:
-            response = seismic_bot.process_input(message)
-            
-            # Convert to new message format
-            chat_history.append({"role": "user", "content": message})
-            
+            response = session_bot.process_input(message)
+
             # Handle different response types
             if isinstance(response, dict) and 'image_path' in response:
-                # Handle image response
                 chat_history.append({"role": "assistant", "content": (response['image_path'],)})
             elif isinstance(response, str):
-                # Handle text response
                 chat_history.append({"role": "assistant", "content": response})
             else:
-                # Handle other response types
                 chat_history.append({"role": "assistant", "content": str(response)})
-                
+
         except Exception as e:
             error_msg = f"Error processing request: {str(e)}"
             chat_history.append({"role": "assistant", "content": error_msg})
-            
-        return "", chat_history
+
+        return "", chat_history, session_bot
     
     with gr.Blocks(title="Seismic Modeling Assistant - Legacy") as demo:
+        # Per-session chatbot, isolated per browser connection.
+        session_state = gr.State(None)
+
         gr.Markdown("""
         # 🌊 Seismic Modeling Assistant (Legacy Implementation)
         
@@ -77,8 +81,8 @@ def create_chat_interface():
                 - Make wedge model
                 """)
         
-        submit.click(respond, [msg, chat_display], [msg, chat_display])
-        msg.submit(respond, [msg, chat_display], [msg, chat_display])
+        submit.click(respond, [msg, chat_display, session_state], [msg, chat_display, session_state])
+        msg.submit(respond, [msg, chat_display, session_state], [msg, chat_display, session_state])
     
     return demo
 

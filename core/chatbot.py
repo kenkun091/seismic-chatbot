@@ -11,13 +11,29 @@ import re
 logger = logging.getLogger(__name__)
 
 class SeismicChatBot:
-    def __init__(self):
-        """Initialize the seismic chatbot with all required components."""
-        self.llm_client = LLMClient()
-        self.tool_manager = ToolManager()
-        self.context_manager = ContextManager()
-        self.input_parser = InputParser()
-        self.knowledge_base = KnowledgeBase()
+    def __init__(self, llm_client=None, tool_manager=None, input_parser=None, knowledge_base=None):
+        """Initialize the seismic chatbot.
+
+        The LLM client, tool manager, input parser, and knowledge base are
+        conversation-stateless and may be injected (shared across sessions). The
+        context manager holds per-conversation state and is ALWAYS fresh. Use
+        ``new_session()`` to spawn an isolated session reusing shared components.
+        """
+        self.llm_client = llm_client or LLMClient()
+        self.tool_manager = tool_manager or ToolManager()
+        self.input_parser = input_parser or InputParser()
+        self.knowledge_base = knowledge_base or KnowledgeBase()
+        self.context_manager = ContextManager()  # per-session, never shared
+
+    def new_session(self) -> "SeismicChatBot":
+        """Return a session-isolated chatbot sharing the heavy, stateless
+        components but owning a fresh conversation context."""
+        return SeismicChatBot(
+            llm_client=self.llm_client,
+            tool_manager=self.tool_manager,
+            input_parser=self.input_parser,
+            knowledge_base=self.knowledge_base,
+        )
 
     def process_input(self, user_input: str) -> str:
         """
