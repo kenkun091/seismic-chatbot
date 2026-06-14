@@ -7,6 +7,7 @@ from .llm_client import LLMClient
 from .tool_manager import ToolManager
 from .context_manager import ContextManager
 from knowledge.knowledge_base import KnowledgeBase
+from core.tool_registry import AUTO_PLOT
 
 logger = logging.getLogger(__name__)
 
@@ -690,46 +691,31 @@ Answer the user's question comprehensively using your knowledge of seismic model
         Returns:
             Optional dict with image path if chaining occurred
         """
-        try:
-            # Automatic chaining: if make_ricker, immediately call plot_ricker
-            if tool_name == "make_ricker":
-                last_wavelet = self.context_manager.get_context("last_ricker_wavelet")
-                if last_wavelet:
-                    plot_input = {
-                        "wavelet": last_wavelet["wavelet"],
-                        "time_array": last_wavelet["time_array"]
-                    }
-                    plot_result = self.tool_manager.process_tool_call("plot_ricker", plot_input)
-                    if self._is_image_output("plot_ricker", plot_result):
-                        return {"image_path": plot_result}
-            
-            # Automatic chaining: if wedge_model, immediately call plot_wedge_model
-            elif tool_name == "wedge_model":
-                last_wedge = self.context_manager.get_context("last_wedge_model")
-                if last_wedge and "synthetic" in last_wedge and "parameters" in last_wedge:
-                    plot_input = {
-                        "synthetic_data": last_wedge["synthetic"],
-                        "parameters": last_wedge["parameters"]
-                    }
-                    plot_result = self.tool_manager.process_tool_call("plot_wedge_model", plot_input)
-                    if self._is_image_output("plot_wedge_model", plot_result):
-                        return {"image_path": plot_result}
-            
-            # Automatic chaining: if AVO tools, immediately call plot_avo_reflectivity
-            elif tool_name in ["zoeppritz_reflectivity", "shuey_reflectivity"]:
-                if isinstance(tool_result, np.ndarray) and "angles" in tool_input:
-                    plot_input = {
-                        "angles": tool_input["angles"],
-                        "rc": tool_result
-                    }
-                    plot_result = self.tool_manager.process_tool_call("plot_avo_reflectivity", plot_input)
-                    if self._is_image_output("plot_avo_reflectivity", plot_result):
-                        return {"image_path": plot_result}
-            
-
-            
+        plot_tool = AUTO_PLOT.get(tool_name)
+        if plot_tool is None:
             return None
-            
+        try:
+            if tool_name in ("make_ricker", "make_ormsby"):
+                last = self.context_manager.get_context("last_ricker_wavelet")
+                if not last:
+                    return None
+                plot_input = {"wavelet": last["wavelet"], "time_array": last["time_array"]}
+            elif tool_name == "wedge_model":
+                last = self.context_manager.get_context("last_wedge_model")
+                if not (last and "synthetic" in last and "parameters" in last):
+                    return None
+                plot_input = {"synthetic_data": last["synthetic"], "parameters": last["parameters"]}
+            elif tool_name in ("zoeppritz_reflectivity", "shuey_reflectivity"):
+                if not (isinstance(tool_result, np.ndarray) and "angles" in tool_input):
+                    return None
+                plot_input = {"angles": tool_input["angles"], "rc": tool_result}
+            else:
+                return None
+
+            plot_result = self.tool_manager.process_tool_call(plot_tool, plot_input)
+            if isinstance(plot_result, str) and plot_result.endswith(".png"):
+                return {"image_path": plot_result}
+            return None
         except Exception as e:
             logger.error(f"Error in automatic chaining: {e}")
             return None
