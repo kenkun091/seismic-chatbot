@@ -1,3 +1,4 @@
+import os
 import logging
 import argparse
 from config.settings import LOG_LEVEL, LOG_FORMAT
@@ -53,7 +54,12 @@ def main():
                 # Use tool use interface (default)
                 demo = create_chat_interface()
             
-            demo.launch(share=True)
+            # Do NOT expose a public tunnel by default — that would put an
+            # unauthenticated, key-billing endpoint on the internet. Opt in
+            # explicitly with GRADIO_SHARE=1; otherwise bind to localhost.
+            share = os.environ.get("GRADIO_SHARE", "").strip().lower() in ("1", "true", "yes")
+            host = os.environ.get("GRADIO_HOST", "127.0.0.1")
+            demo.launch(share=share, server_name=host)
             
     except Exception as e:
         logger.error(f"Application failed to start: {e}")

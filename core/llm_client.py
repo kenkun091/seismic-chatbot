@@ -5,21 +5,37 @@ from config.settings import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DATABRICKS_TOKE
 
 logger = logging.getLogger(__name__)
 
+
+def resolve_llm_credentials(deepseek_key, deepseek_url, databricks_token, databricks_url):
+    """Select an LLM provider's (api_key, base_url) or fail fast with a clear message.
+
+    Databricks takes precedence when both its credentials are present; otherwise
+    DeepSeek is used. Raises ``RuntimeError`` if no provider is fully configured,
+    so the app fails at startup instead of constructing a client with a None key
+    and erroring opaquely on the first request.
+    """
+    if databricks_token and databricks_url:
+        return databricks_token, databricks_url
+    if deepseek_key and deepseek_url:
+        return deepseek_key, deepseek_url
+    if deepseek_key and not deepseek_url:
+        raise RuntimeError(
+            "DEEPSEEK_API_KEY is set but DEEPSEEK_BASE_URL is missing. "
+            "Set both, or provide DATABRICKS_TOKEN + DATABRICKS_BASE_URL."
+        )
+    raise RuntimeError(
+        "No LLM credentials found. Set DEEPSEEK_API_KEY + DEEPSEEK_BASE_URL "
+        "(or DATABRICKS_TOKEN + DATABRICKS_BASE_URL) in your environment / .env."
+    )
+
+
 class LLMClient:
     def __init__(self):
         """Initialize the LLM client with configuration for either DeepSeek or Databricks."""
-        # Check if Databricks credentials are available
-        if DATABRICKS_TOKEN and DATABRICKS_BASE_URL:
-            self.client = OpenAI(
-                api_key=DATABRICKS_TOKEN,
-                base_url=DATABRICKS_BASE_URL,
-            )
-        else:
-            # Fall back to DeepSeek configuration
-            self.client = OpenAI(
-                api_key=DEEPSEEK_API_KEY,
-                base_url=DEEPSEEK_BASE_URL,
-            )
+        api_key, base_url = resolve_llm_credentials(
+            DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DATABRICKS_TOKEN, DATABRICKS_BASE_URL
+        )
+        self.client = OpenAI(api_key=api_key, base_url=base_url)
         self.model = LLM_MODEL
         self.temperature = LLM_TEMPERATURE
         self.max_tokens = LLM_MAX_TOKENS

@@ -1,13 +1,41 @@
-from fastapi import FastAPI, HTTPException
+import os
+import time
+
+from fastapi import FastAPI, HTTPException, Header, Request, Depends
 from pydantic import BaseModel
 from typing import List, Optional
 from core.chatbot_tool_use import SeismicChatBotToolUse
 from config.example_prompts import EXAMPLE_PROMPTS, search_prompts, get_random_prompts, get_prompts_by_category
+from interfaces.security import RateLimiter, check_api_key
 
 app = FastAPI(title="Seismic ChatBot API", description="API for seismic modeling assistant")
 
-# Initialize the chatbot
-chatbot = SeismicChatBotToolUse()
+# Build the heavy components once; each request gets an isolated session so
+# concurrent callers never share conversation context or token counters.
+base_chatbot = SeismicChatBotToolUse()
+
+# --- Security containment for the paid /chat endpoint -----------------------
+# /chat proxies straight to a billed LLM. Require an API key (fail closed if the
+# operator hasn't set one) and throttle per-client to bound cost/abuse.
+API_AUTH_KEY = os.environ.get("API_AUTH_KEY")
+_chat_rate_limiter = RateLimiter(
+    max_requests=int(os.environ.get("CHAT_RATE_MAX", "30")),
+    window_seconds=float(os.environ.get("CHAT_RATE_WINDOW_SECONDS", "60")),
+)
+
+
+def enforce_chat_policy(request: Request, x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")):
+    """Auth + rate-limit gate for /chat. Fails closed when no API key is configured."""
+    if not API_AUTH_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Server misconfigured: set API_AUTH_KEY to enable the /chat endpoint.",
+        )
+    if not check_api_key(x_api_key, API_AUTH_KEY):
+        raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key.")
+    client = request.client.host if request.client else "unknown"
+    if not _chat_rate_limiter.allow(client, now=time.time()):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Try again shortly.")
 
 class ChatRequest(BaseModel):
     message: str
@@ -30,11 +58,12 @@ class PromptSearchResponse(BaseModel):
     results: List[ExamplePrompt]
     total: int
 
-@app.post("/chat", response_model=ChatResponse)
+@app.post("/chat", response_model=ChatResponse, dependencies=[Depends(enforce_chat_policy)])
 async def chat(request: ChatRequest):
     """Process a chat message and return the response."""
     try:
-        response = chatbot.process_single_input(request.message)
+        session = base_chatbot.new_session()
+        response = session.process_single_input(request.message)
         return ChatResponse(response=str(response), success=True)
     except Exception as e:
         return ChatResponse(response="", success=False, error=str(e))
@@ -123,4 +152,8 @@ async def copy_example_prompt(category: str, index: int):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Bind to localhost by default; override with API_HOST=0.0.0.0 only behind
+    # a trusted proxy / once auth + rate limiting are confirmed in place.
+    host = os.environ.get("API_HOST", "127.0.0.1")
+    port = int(os.environ.get("API_PORT", "8000"))
+    uvicorn.run(app, host=host, port=port)

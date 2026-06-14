@@ -41,13 +41,15 @@ def test_analyze_wedge_tuning_thickness():
     assert len(out["max_amplitudes"]) == len(out["thicknesses"])
 
 
-def test_csv_export_writes_file(tmp_path):
-    out_csv = tmp_path / "curves.csv"
+def test_csv_export_writes_file(tmp_path, monkeypatch):
+    # export_path is confined to SEISMIC_EXPORT_DIR; callers pass a relative name.
+    monkeypatch.setenv("SEISMIC_EXPORT_DIR", str(tmp_path))
     create_wedge_model(
         max_thickness=60, v1=2500, v2=3000, v3=3500,
         rho1=2.2, rho2=2.3, rho3=2.4, wavelet_freq=30, num_traces=41,
-        export_path=str(out_csv),
+        export_path="curves.csv",
     )
+    out_csv = tmp_path / "curves.csv"
     assert out_csv.exists()
     header = out_csv.read_text().splitlines()[0]
     assert "Thickness" in header
