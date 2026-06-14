@@ -1,0 +1,52 @@
+import os
+
+import numpy as np
+import pytest
+
+from tools.wedge_tools import wedge_avo_gather, create_wedge_model
+
+GKW = dict(max_thickness=60, v1=2500, v2=3000, v3=3500, rho1=2.2, rho2=2.3, rho3=2.4)
+
+
+def test_gather_shape():
+    angles = [0, 10, 20, 30]
+    t, cube, params = wedge_avo_gather(angles=angles, **GKW)
+    assert cube.ndim == 3
+    assert cube.shape == (len(t), 61, len(angles))
+    assert params["num_traces"] == 61
+    assert params["angles"] == angles
+
+
+def test_single_angle_panel_matches_wedge_model():
+    # At a non-zero angle both paths use Shuey, so the gather panel must equal the
+    # single-angle wedge_model synthetic exactly (same geometry + same RC).
+    ang = 10
+    _, cube, _ = wedge_avo_gather(angles=[ang], **GKW)
+    _, _, synth, _ = create_wedge_model(incident_angle=ang, **GKW)
+    synth = np.asarray(synth)
+    assert cube.shape[:2] == synth.shape
+    assert np.allclose(cube[:, :, 0], synth, atol=1e-9)
+
+
+def test_gather_accepts_velocity_inversion():
+    _, cube, _ = wedge_avo_gather(
+        angles=[10, 20], max_thickness=50,
+        v1=3000, v2=2300, v3=3200, rho1=2.4, rho2=2.0, rho3=2.4,
+    )
+    assert cube.shape[2] == 2
+    assert np.all(np.isfinite(cube))
+
+
+def test_gather_rejects_vs_ge_vp():
+    with pytest.raises(ValueError):
+        wedge_avo_gather(angles=[10], vs1=3000, **GKW)  # vs1>=vp1=2500
+
+
+def test_gather_rejects_bad_angle():
+    with pytest.raises(ValueError):
+        wedge_avo_gather(angles=[95], **GKW)
+
+
+def test_gather_rejects_empty_angles():
+    with pytest.raises(ValueError):
+        wedge_avo_gather(angles=[], **GKW)

@@ -10,7 +10,7 @@ from typing import Optional, Tuple, Dict, Union
 # Import from avo_tools
 from .avo_tools import shuey_reflectivity
 from .path_safety import safe_export_path
-from .physics_guards import require_elastic_medium, require_positive, warn_if_aliased, warn_if_outside
+from .physics_guards import require_elastic_medium, require_positive, warn_if_aliased, warn_if_outside, angles_error
 
 import matplotlib
 matplotlib.use('Agg')
@@ -1072,3 +1072,107 @@ def plot_wedge_analysis(
     
     plt.tight_layout()
     plt.show()
+
+
+def wedge_avo_gather(
+    max_thickness, v1, v2, v3, rho1, rho2, rho3, angles,
+    vs1=None, vs2=None, vs3=None,
+    wavelet_freq=30.0, num_traces=61, dt=0.1,
+    wv_type='ricker', ormsby_freq=None,
+    phase_rot=0.0, plotpadtime=50.0, zunit='m',
+):
+    """Wedge AVO angle gather: the synthetic wedge computed independently per
+    incidence angle (Shuey reflectivity), returned as a 3-D cube
+    (nt x num_traces x nangles). The single-angle wedge_model is left untouched.
+
+    Returns (time_array, gather, parameters).
+    """
+    angles = list(angles)
+    if not angles:
+        raise ValueError("angles must be a non-empty list of incidence angles (deg).")
+
+    vp_layers = [v1, v2, v3]
+    rho_layers = [rho1, rho2, rho3]
+    vs_layers = [vs1 if vs1 is not None else v1 / 2.0,
+                 vs2 if vs2 is not None else v2 / 2.0,
+                 vs3 if vs3 is not None else v3 / 2.0]
+
+    # --- Physical-validity guards (shared helpers) ---
+    require_positive(max_thickness, "max_thickness")
+    require_positive(dt, "dt")
+    if num_traces < 2:
+        raise ValueError(f"num_traces must be >= 2 (got {num_traces})")
+    for _i in range(3):
+        require_elastic_medium(vp_layers[_i], vs_layers[_i], rho_layers[_i], f"layer {_i + 1}")
+        warn_if_outside(vp_layers[_i], 300, 8000, f"vp layer {_i + 1}", "m/s")
+    _ang_err = angles_error(angles)
+    if _ang_err:
+        raise ValueError(_ang_err)
+    if wv_type == 'ormsby' and ormsby_freq:
+        _content_hz = float(ormsby_freq.split(',')[-1])
+    elif wavelet_freq:
+        _content_hz = 3.0 * wavelet_freq
+    else:
+        _content_hz = 0.0
+    warn_if_aliased(_content_hz, dt / 1000.0, "wedge gather wavelet")
+
+    # --- Geometry (built once; independent of angle; mirrors wedge_model) ---
+    z_min = 0
+    z_max = max_thickness
+    ntraces = num_traces
+    t, wavelet, wavelet_label = gen_wavelet(
+        dt, wv_type, wavelet_freq, ormsby_freq, '', '', phase_rot, wavelet_length=256.0)
+    wavelet_length = t[-1] - t[0] + dt
+    pad_time = plotpadtime
+    model_time = 2 * pad_time + 2000 * (z_max - z_min) / vp_layers[1]
+    if model_time < wavelet_length:
+        pad_time += (wavelet_length - model_time) / 2.0 + dt
+    thickness = np.linspace(z_min, z_max, ntraces)
+    t_ref = 300
+    interface1_t = t_ref + thickness * 0
+    interface2_t = t_ref + thickness * 2000 / vp_layers[1]
+    max_interface_time = max(interface1_t.max(), interface2_t.max())
+    min_interface_time = min(interface1_t.min(), interface2_t.min())
+    required_time_range = max_interface_time - min_interface_time + 2 * pad_time
+    nt = int(round(2 * pad_time + 2000 * (z_max - z_min) / vp_layers[1] / dt))
+    nt = max(nt, int(round(required_time_range / dt)) + 100)
+    t0 = min_interface_time - pad_time
+
+    # Build the model-domain time axis (length nt, starting at t0)
+    t_model = t0 + np.arange(nt) * dt
+
+    # --- Per-angle reflectivity + convolution ---
+    nangles = len(angles)
+    gather = np.zeros((nt, ntraces, nangles))
+    for k, ang in enumerate(angles):
+        rc1 = shuey_reflectivity(
+            vp1=vp_layers[0], vs1=vs_layers[0], rho1=rho_layers[0],
+            vp2=vp_layers[1], vs2=vs_layers[1], rho2=rho_layers[1], angles=[ang])[0]
+        rc2 = shuey_reflectivity(
+            vp1=vp_layers[1], vs1=vs_layers[1], rho1=rho_layers[1],
+            vp2=vp_layers[2], vs2=vs_layers[2], rho2=rho_layers[2], angles=[ang])[0]
+        rc_model = np.zeros((nt, ntraces))
+        for itr in range(ntraces):
+            idx1 = int(round((interface1_t[itr] - t0) / dt))
+            idx2 = int(round((interface2_t[itr] - t0) / dt)) + 1
+            if 0 <= idx1 < nt:
+                rc_model[idx1, itr] = rc1
+            if 0 <= idx2 < nt:
+                rc_model[idx2, itr] = rc2
+        gather[:, :, k] = np.apply_along_axis(
+            lambda _tr: scipy.signal.convolve(_tr, wavelet, mode='same'), axis=0, arr=rc_model)
+
+    parameters = {
+        'angles': angles,
+        'v2': v2,
+        'max_thickness': max_thickness,
+        'num_traces': ntraces,
+        'dt': dt,
+        'wavelet_freq': wavelet_freq,
+        'interface1_t': interface1_t,
+        't0': t0,
+        'nt': nt,
+        'zunit': zunit,
+        'wavelet_label': wavelet_label,
+    }
+    return t_model, gather, parameters
