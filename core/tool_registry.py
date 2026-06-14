@@ -123,7 +123,7 @@ REGISTRY = [
                 "description": "Array of time values in milliseconds."
             },
         },
-        required=["wavelet"],
+        required=["wavelet", "time_array"],
         defaults={},
     ),
     ToolSpec(

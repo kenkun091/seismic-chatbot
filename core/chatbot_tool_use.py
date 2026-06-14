@@ -47,9 +47,11 @@ but only use them when needed.
 
 Available tools:
 - make_ricker: Creates a Ricker wavelet with specified frequency
+- make_ormsby: Creates an Ormsby (bandpass) wavelet from four corner frequencies
 - plot_ricker: Plots a Ricker wavelet with time and frequency analysis
 - wedge_model: Creates a wedge model for seismic analysis
 - plot_wedge_model: Plots wedge model results
+- analyze_wedge: Analyzes a wedge model for tuning thickness and amplitude-vs-thickness
 - zoeppritz_reflectivity: Calculates reflectivity using Zoeppritz equations
 - shuey_reflectivity: Calculates reflectivity using Shuey's approximation
 - plot_avo_reflectivity: Plots AVO reflectivity curves
@@ -747,12 +749,12 @@ Answer the user's question comprehensively using your knowledge of seismic model
             tool_result: Result from tool execution
         """
         try:
-            if tool_name == "make_ricker":
-                # Store frequency for future use
-                if "frequency" in tool_input:
+            if tool_name in ("make_ricker", "make_ormsby"):
+                # Store frequency for future use (only for make_ricker which has a single frequency)
+                if tool_name == "make_ricker" and "frequency" in tool_input:
                     self.context_manager.set_context("last_frequency", tool_input["frequency"])
-                
-                # Store wavelet data
+
+                # Store wavelet data for both make_ricker and make_ormsby (same tuple shape)
                 if isinstance(tool_result, tuple) and len(tool_result) == 2:
                     time_array, wavelet = tool_result
                     self.context_manager.set_context("last_ricker_wavelet", {

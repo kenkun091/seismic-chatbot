@@ -83,3 +83,26 @@ def test_parse_tool_input_malformed_raises():
 def test_parse_tool_input_valid_json():
     bot = _bare_bot()
     assert bot._parse_tool_input('{"frequency": 30}') == {"frequency": 30}
+
+
+def test_make_ormsby_updates_context_and_chains():
+    bot = _bare_bot()
+
+    class _RWContext:
+        def __init__(self):
+            self.store = {}
+        def set_context(self, k, v):
+            self.store[k] = v
+        def get_context(self, k):
+            return self.store.get(k)
+
+    bot.context_manager = _RWContext()
+    bot.tool_manager = _FakeToolManager()
+    # ormsby compute result is a (time_array, wavelet) tuple, like make_ricker
+    result = ([-1.0, 0.0, 1.0], [0.0, 1.0, 0.0])
+    bot._update_context("make_ormsby", {"f1": 5, "f2": 10, "f3": 40, "f4": 50}, result)
+    # context must now hold the wavelet so chaining can read it
+    assert bot.context_manager.get_context("last_ricker_wavelet") is not None
+    out = bot._handle_automatic_chaining("make_ormsby", {"f1": 5, "f2": 10, "f3": 40, "f4": 50}, result)
+    assert out == {"image_path": "/tmp/fake_plot.png"}
+    assert bot.tool_manager.calls[0][0] == "plot_ricker"
