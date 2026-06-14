@@ -50,6 +50,28 @@ def create_ricker_wavelet(
 
     return t*1000, wavelet
 
+def create_ormsby_wavelet(
+    f1: float,
+    f2: float,
+    f3: float,
+    f4: float,
+    time_length: float = 256.,
+    dt: float = 0.001,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Create an Ormsby (bandpass) wavelet from four increasing corner
+    frequencies (Hz). Returns (time_array_ms, wavelet).
+    """
+    from tools.wedge_tools import ormsby
+    if not (f1 < f2 < f3 < f4):
+        raise ValueError("Ormsby corner frequencies must satisfy f1 < f2 < f3 < f4.")
+    if f1 < 0:
+        raise ValueError("Ormsby corner frequencies must be positive.")
+    # wedge_tools.ormsby takes length and dt in ms; dt here is seconds.
+    t_ms, wavelet = ormsby(time_length, dt * 1000.0, f1, f2, f3, f4)
+    return t_ms, wavelet
+
+
 def analyze_wavelet(
     time_array: np.ndarray,
     wavelet: np.ndarray,

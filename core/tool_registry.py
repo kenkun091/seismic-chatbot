@@ -8,15 +8,12 @@ wiring are all DERIVED from REGISTRY — nothing else is hand-maintained.
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
-from tools.ricker_tools import create_ricker_wavelet, plot_wavelet
-# TODO(Task 8): re-enable make_ormsby/analyze_wedge entries and real validators
-# from tools.ricker_tools import create_ormsby_wavelet  # does not exist yet (Task 8)
-from tools.wedge_tools import create_wedge_model, plot_wedge_model
-# from tools.wedge_tools import analyze_wedge  # does not exist yet (Task 8)
+from tools.ricker_tools import create_ricker_wavelet, create_ormsby_wavelet, plot_wavelet
+from tools.wedge_tools import create_wedge_model, plot_wedge_model, analyze_wedge
 from tools.avo_tools import zoeppritz_reflectivity, shuey_reflectivity, plot_avo_reflectivity
 from tools.rock_physics_tools import calculate_rock_properties, rock_physics_rag
 from tools.rag_tools import knowledge_rag
-# TODO(Task 8): from tools.parameter_validation import validate_make_ricker, validate_wedge_model, validate_avo
+from tools.parameter_validation import validate_make_ricker, validate_wedge_model, validate_avo
 
 
 @dataclass(frozen=True)
@@ -86,10 +83,26 @@ REGISTRY = [
         },
         required=["frequency"],
         defaults={"time_length": 256.0, "dt": 0.001},
-        validator=None,  # TODO(Task 8): validate_make_ricker
+        validator=validate_make_ricker,
         auto_plot="plot_ricker",
     ),
-    # TODO(Task 8): re-enable make_ormsby ToolSpec (fn=create_ormsby_wavelet, auto_plot="plot_ricker")
+    ToolSpec(
+        name="make_ormsby",
+        fn=create_ormsby_wavelet,
+        description="Creates an Ormsby (bandpass) wavelet from four corner frequencies f1<f2<f3<f4 in Hz.",
+        params={
+            "f1": {"type": "number", "description": "Low-cut corner frequency in Hz."},
+            "f2": {"type": "number", "description": "Low-pass corner frequency in Hz."},
+            "f3": {"type": "number", "description": "High-pass corner frequency in Hz."},
+            "f4": {"type": "number", "description": "High-cut corner frequency in Hz."},
+            "time_length": {"type": "number", "description": "Total length of the wavelet in milliseconds (default: 256 ms)."},
+            "dt": {"type": "number", "description": "Time sampling interval in seconds (default: 0.001)."},
+        },
+        required=["f1", "f2", "f3", "f4"],
+        defaults={"time_length": 256.0, "dt": 0.001},
+        validator=None,
+        auto_plot="plot_ricker",
+    ),
     ToolSpec(
         name="plot_ricker",
         fn=plot_wavelet,
@@ -177,7 +190,7 @@ REGISTRY = [
         },
         required=["max_thickness", "v1", "v2", "v3", "rho1", "rho2", "rho3"],
         defaults={"wavelet_freq": 30.0, "num_traces": 61},
-        validator=None,  # TODO(Task 8): validate_wedge_model
+        validator=validate_wedge_model,
         auto_plot="plot_wedge_model",
     ),
     ToolSpec(
@@ -210,7 +223,17 @@ REGISTRY = [
         required=["synthetic_data", "parameters"],
         defaults={},
     ),
-    # TODO(Task 8): re-enable analyze_wedge ToolSpec (fn=analyze_wedge, required synthetic_data+parameters)
+    ToolSpec(
+        name="analyze_wedge",
+        fn=analyze_wedge,
+        description="Analyzes a wedge model: returns tuning thickness, tuning amplitude, resolution limit, and the amplitude-vs-thickness curve.",
+        params={
+            "synthetic_data": {"type": "array", "items": {"type": "array", "items": {"type": "number"}}, "description": "2D array of synthetic seismic data."},
+            "parameters": {"type": "object", "description": "Parameters returned by wedge_model."},
+        },
+        required=["synthetic_data", "parameters"],
+        defaults={},
+    ),
     ToolSpec(
         name="zoeppritz_reflectivity",
         fn=zoeppritz_reflectivity,
@@ -218,7 +241,7 @@ REGISTRY = [
         params=_AVO_PARAMS,
         required=["vp1", "vs1", "rho1", "vp2", "vs2", "rho2", "angles"],
         defaults={},
-        validator=None,  # TODO(Task 8): validate_avo
+        validator=validate_avo,
         auto_plot="plot_avo_reflectivity",
     ),
     ToolSpec(
@@ -228,7 +251,7 @@ REGISTRY = [
         params=_AVO_PARAMS,
         required=["vp1", "vs1", "rho1", "vp2", "vs2", "rho2", "angles"],
         defaults={},
-        validator=None,  # TODO(Task 8): validate_avo
+        validator=validate_avo,
         auto_plot="plot_avo_reflectivity",
     ),
     ToolSpec(
