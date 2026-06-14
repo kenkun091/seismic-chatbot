@@ -20,9 +20,9 @@ def test_wedge_model_shapes():
         rho1=2.2, rho2=2.3, rho3=2.4, num_traces=31,
     )
     synthetic = np.asarray(synthetic)
-    # num_traces parameter is ignored internally; ntraces is hardcoded to 61.
-    # synthetic shape is (nsamples, ntraces) so ntraces appears on axis 1.
-    assert 61 in synthetic.shape
+    # num_traces is honored; synthetic shape is (nsamples, ntraces).
+    assert 31 in synthetic.shape
+    assert synthetic.shape[1] == 31
     assert "wavelet_label" in params
 
 
