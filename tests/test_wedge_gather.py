@@ -116,3 +116,17 @@ def test_gather_context_and_chaining():
     chained = bot._handle_automatic_chaining("wedge_avo_gather", {"angles": [0, 20]}, result)
     assert chained is not None and "image_path" in chained
     assert chained["image_path"].endswith(".png")
+
+
+def test_gather_warns_on_aliasing():
+    # content = 3*200 = 600 Hz; Nyquist = 0.5/(4ms) = 125 Hz -> aliasing warning
+    with pytest.warns(UserWarning):
+        wedge_avo_gather(angles=[10], wavelet_freq=200, dt=4.0, **GKW)
+
+
+def test_gather_single_angle_avo():
+    _, cube, params = wedge_avo_gather(angles=[20], **GKW)
+    out = analyze_wedge_gather(cube, params)
+    assert cube.shape[2] == 1
+    assert len(out["avo"]["amplitudes"]) == 1
+    assert np.isfinite(out["avo"]["amplitudes"][0])
