@@ -630,8 +630,10 @@ def wedge_model(zunit, max_thickness, wv_type, ricker_freq, ormsby_freq, wavelet
     # Nyquist / aliasing warning (dt is in ms here -> convert to seconds)
     if wv_type == 'ormsby' and ormsby_freq:
         _content_hz = float(ormsby_freq.split(',')[-1])
-    else:
+    elif ricker_freq:
         _content_hz = 3.0 * ricker_freq
+    else:
+        _content_hz = 0.0
     warn_if_aliased(_content_hz, dt / 1000.0, "wedge wavelet")
 
     # Calculate acoustic impedance for each layer
