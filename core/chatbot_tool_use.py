@@ -73,6 +73,7 @@ Available tools:
 - zoeppritz_reflectivity: Calculates reflectivity using Zoeppritz equations
 - shuey_reflectivity: Calculates reflectivity using Shuey's approximation
 - plot_avo_reflectivity: Plots AVO reflectivity curves
+- gassmann_substitution: Gassmann fluid substitution from in-situ Vp/Vs/density + porosity (e.g. model the gas case of a brine sand)
 
 Guidelines:
 1. Be helpful and concise in your responses

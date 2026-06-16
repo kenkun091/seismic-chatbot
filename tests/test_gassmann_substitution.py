@@ -107,3 +107,16 @@ def test_nonphysical_k_dry_warns_but_returns():
     assert set(res) >= {"vp", "vs", "rho", "vp_vs", "k_dry", "k_sat", "mu"}
     assert np.isfinite(res["vs"])
     assert np.isnan(res["vp"])
+
+
+def test_registered_in_registry():
+    from core.tool_registry import REGISTRY_BY_NAME, TOOL_FUNCTIONS, TOOL_SCHEMAS
+
+    assert "gassmann_substitution" in REGISTRY_BY_NAME
+    spec = REGISTRY_BY_NAME["gassmann_substitution"]
+    assert spec.fn is gassmann_substitution
+    assert spec.auto_plot is None
+    assert set(spec.required) == {"vp", "vs", "rho", "phi", "fluid_in", "fluid_out"}
+    assert TOOL_FUNCTIONS["gassmann_substitution"] is gassmann_substitution
+    names = [s["name"] for s in TOOL_SCHEMAS]
+    assert "gassmann_substitution" in names

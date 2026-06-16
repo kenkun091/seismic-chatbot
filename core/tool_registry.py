@@ -11,7 +11,7 @@ from typing import Callable, Optional
 from tools.ricker_tools import create_ricker_wavelet, create_ormsby_wavelet, plot_wavelet
 from tools.wedge_tools import create_wedge_model, plot_wedge_model, analyze_wedge, wedge_avo_gather, plot_wedge_gather, analyze_wedge_gather
 from tools.avo_tools import zoeppritz_reflectivity, shuey_reflectivity, plot_avo_reflectivity
-from tools.rock_physics_tools import calculate_rock_properties, rock_physics_rag
+from tools.rock_physics_tools import calculate_rock_properties, rock_physics_rag, gassmann_substitution
 from tools.rag_tools import knowledge_rag
 from tools.parameter_validation import validate_make_ricker, validate_wedge_model, validate_avo
 
@@ -349,6 +349,28 @@ REGISTRY = [
         },
         required=["phit", "vclay"],
         defaults={"fluid_type": "water"},
+    ),
+    ToolSpec(
+        name="gassmann_substitution",
+        fn=gassmann_substitution,
+        description="Gassmann fluid substitution: from in-situ Vp, Vs, density and porosity, compute the elastic properties (Vp, Vs, density) after swapping the pore fluid (e.g. brine to gas). Shear modulus is held fluid-independent.",
+        params={
+            "vp": {"type": "number", "description": "In-situ P-wave velocity in m/s."},
+            "vs": {"type": "number", "description": "In-situ S-wave velocity in m/s."},
+            "rho": {"type": "number", "description": "In-situ bulk density in g/cm³."},
+            "phi": {"type": "number", "description": "Porosity (fraction, 0-1)."},
+            "fluid_in": {"type": "string", "description": "In-situ pore fluid: 'water'/'brine', 'oil', or 'gas'."},
+            "fluid_out": {"type": "string", "description": "Target pore fluid to substitute in: 'water'/'brine', 'oil', or 'gas'."},
+            "k_mineral": {"type": "number", "description": "Mineral (grain) bulk modulus in GPa (default 37, quartz)."},
+            "k_fl_in": {"type": "number", "description": "Optional in-situ fluid bulk-modulus override in GPa."},
+            "rho_fl_in": {"type": "number", "description": "Optional in-situ fluid density override in g/cm³."},
+            "k_fl_out": {"type": "number", "description": "Optional target fluid bulk-modulus override in GPa."},
+            "rho_fl_out": {"type": "number", "description": "Optional target fluid density override in g/cm³."},
+        },
+        required=["vp", "vs", "rho", "phi", "fluid_in", "fluid_out"],
+        defaults={"k_mineral": 37.0},
+        validator=None,
+        auto_plot=None,
     ),
     ToolSpec(
         name="rock_physics_rag",
