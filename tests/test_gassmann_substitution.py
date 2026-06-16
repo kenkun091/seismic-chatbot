@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from tools.rock_physics_tools import gassmann_substitution
+from tools.rock_physics_tools import gassmann_substitution, calculate_rock_properties
 
 
 def test_roundtrip_identity_same_fluid():
@@ -26,9 +26,6 @@ def test_brine_to_gas_signature():
     assert res["rho"] < 2.2
 
 
-from tools.rock_physics_tools import calculate_rock_properties
-
-
 def test_matches_calculate_rock_properties_gas_case():
     # With vclay=0, calculate_rock_properties' mineral modulus K0 == 37 GPa (pure
     # quartz VRH), matching the default k_mineral. Feeding its water-sat output
@@ -47,14 +44,25 @@ def test_matches_calculate_rock_properties_gas_case():
 
 
 def test_array_inputs_return_arrays():
+    vp = np.array([3000.0, 3200.0])
+    vs = np.array([1500.0, 1600.0])
+    rho = np.array([2.2, 2.25])
+    phi = np.array([0.2, 0.18])
     res = gassmann_substitution(
-        vp=np.array([3000.0, 3200.0]), vs=np.array([1500.0, 1600.0]),
-        rho=np.array([2.2, 2.25]), phi=np.array([0.2, 0.18]),
+        vp=vp, vs=vs, rho=rho, phi=phi,
         fluid_in="brine", fluid_out="gas", print_results=False,
     )
     assert res["vp"].shape == (2,)
     assert res["vs"].shape == (2,)
     assert res["rho"].shape == (2,)
+    # The array path must match the scalar path element-wise.
+    scalar0 = gassmann_substitution(
+        vp=3000.0, vs=1500.0, rho=2.2, phi=0.2,
+        fluid_in="brine", fluid_out="gas", print_results=False,
+    )
+    assert np.isclose(res["vp"][0], scalar0["vp"])
+    assert np.isclose(res["vs"][0], scalar0["vs"])
+    assert np.isclose(res["rho"][0], scalar0["rho"])
 
 
 def test_custom_fluid_override_differs_from_preset():
@@ -86,10 +94,16 @@ def test_guards_reject_bad_inputs():
 
 
 def test_nonphysical_k_dry_warns_but_returns():
-    # Very low Vp at high porosity drives K_dry below zero -> warn, still returns.
-    with pytest.warns(UserWarning):
+    # Very low Vp at high porosity drives K_dry below zero. The function warns
+    # (about the non-physical dry frame) and still returns a structurally complete
+    # dict. Vs stays finite (mu>0, rho_out>0); Vp is NaN because the substituted
+    # saturated modulus goes negative under sqrt — pin that as the documented
+    # consequence of inconsistent inputs rather than leaving it incidental.
+    with pytest.warns(UserWarning, match="non-physical"):
         res = gassmann_substitution(
             vp=1600.0, vs=200.0, rho=2.0, phi=0.35,
             fluid_in="water", fluid_out="gas", print_results=False,
         )
-    assert "vp" in res
+    assert set(res) >= {"vp", "vs", "rho", "vp_vs", "k_dry", "k_sat", "mu"}
+    assert np.isfinite(res["vs"])
+    assert np.isnan(res["vp"])
