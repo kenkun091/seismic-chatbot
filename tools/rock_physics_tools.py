@@ -53,6 +53,114 @@ def gassmann_dry(K_sat, K0, K_fl, phi):
     return num / den
 
 
+def _fluid_moduli(name, k_override=None, rho_override=None):
+    """Resolve a fluid's (K_fl in Pa, rho_fl in g/cc) from a preset name and/or
+    explicit overrides. Overrides (K in GPa, rho in g/cc) take precedence over the
+    preset. Raises ValueError if the fluid is neither a known preset nor fully
+    specified by overrides, or if a resolved modulus/density is non-positive.
+    """
+    K = rho = None
+    if name is not None:
+        preset = _FLUIDS.get(str(name).lower())
+        if preset is not None:
+            K, rho = preset
+    if k_override is not None:
+        K = float(k_override) * 1e9      # GPa -> Pa
+    if rho_override is not None:
+        rho = float(rho_override)        # g/cc
+    if K is None or rho is None:
+        raise ValueError(
+            f"Unknown fluid '{name}'; use one of {sorted(_FLUIDS)} "
+            f"or supply k_fl/rho_fl overrides."
+        )
+    if K <= 0 or rho <= 0:
+        raise ValueError(
+            f"fluid modulus and density must be positive (got K={K} Pa, rho={rho} g/cc)"
+        )
+    return K, rho
+
+
+def gassmann_substitution(vp, vs, rho, phi, fluid_in, fluid_out,
+                          k_mineral=37.0,
+                          k_fl_in=None, rho_fl_in=None,
+                          k_fl_out=None, rho_fl_out=None,
+                          print_results=True):
+    """Gassmann fluid substitution from in-situ elastic properties.
+
+    Args:
+        vp, vs: in-situ P/S velocities (m/s), scalar or array-like.
+        rho: in-situ bulk density (g/cc), scalar or array-like.
+        phi: porosity (fraction, 0-1), scalar or array-like.
+        fluid_in, fluid_out: 'water'/'brine'/'oil'/'gas' (case-insensitive).
+        k_mineral: mineral (grain) bulk modulus in GPa (default 37, quartz).
+        k_fl_in/out: optional fluid bulk-modulus override in GPa.
+        rho_fl_in/out: optional fluid density override in g/cc.
+
+    Returns:
+        dict with substituted 'vp' (m/s), 'vs' (m/s), 'rho' (g/cc), 'vp_vs',
+        plus 'k_dry', 'k_sat' (GPa) and 'mu' (GPa, unchanged by substitution).
+    """
+    vp = np.asarray(vp, dtype=float)
+    vs = np.asarray(vs, dtype=float)
+    rho = np.asarray(rho, dtype=float)
+    phi = np.asarray(phi, dtype=float)
+
+    # REJECT non-physical inputs.
+    if np.any(phi < 0) or np.any(phi > 1):
+        raise ValueError("phi (porosity) must be within [0, 1]")
+    if np.any(vp <= 0):
+        raise ValueError("vp must be positive")
+    if np.any(vs <= 0):
+        raise ValueError("vs must be positive")
+    if np.any(rho <= 0):
+        raise ValueError("rho must be positive")
+    if k_mineral is None or k_mineral <= 0:
+        raise ValueError(f"k_mineral must be positive (got {k_mineral})")
+
+    K0 = float(k_mineral) * 1e9  # GPa -> Pa
+    K_fl_in, rho_fl_in_val = _fluid_moduli(fluid_in, k_fl_in, rho_fl_in)
+    K_fl_out, rho_fl_out_val = _fluid_moduli(fluid_out, k_fl_out, rho_fl_out)
+
+    # In-situ saturated moduli (SI); density g/cc -> kg/m^3.
+    rho_si = rho * 1000.0
+    mu = rho_si * vs ** 2                              # Pa, fluid-independent
+    K_sat_in = rho_si * vp ** 2 - (4.0 / 3.0) * mu    # Pa
+
+    # Invert to the dry frame, then forward-substitute the new fluid.
+    K_dry = gassmann_dry(K_sat_in, K0, K_fl_in, phi)
+    if np.any(K_dry < 0) or np.any(K_dry > K0):
+        warnings.warn(
+            "Inverted dry-frame modulus is non-physical (K_dry < 0 or > K_mineral); "
+            "check vp/vs/rho/phi/k_mineral consistency.",
+            stacklevel=2,
+        )
+    K_sat_out = gassmann_sat(K_dry, K0, K_fl_out, phi)
+
+    # Density swap (only the pore fluid changes), g/cc.
+    rho_out = rho + phi * (rho_fl_out_val - rho_fl_in_val)
+    rho_out_si = rho_out * 1000.0
+
+    vp_out = np.sqrt((K_sat_out + (4.0 / 3.0) * mu) / rho_out_si)
+    vs_out = np.sqrt(mu / rho_out_si)
+    vp_vs = vp_out / vs_out
+
+    result = {
+        "vp": vp_out, "vs": vs_out, "rho": rho_out, "vp_vs": vp_vs,
+        "k_dry": K_dry / 1e9, "k_sat": K_sat_out / 1e9, "mu": mu / 1e9,
+    }
+
+    if print_results:
+        print("\n=== Gassmann Fluid Substitution ===")
+        print(f"  {fluid_in} -> {fluid_out}")
+        print(f"  Vp:  {_format_value(vp_out, 0)} m/s")
+        print(f"  Vs:  {_format_value(vs_out, 0)} m/s")
+        print(f"  Rho: {_format_value(rho_out, 3)} g/cc")
+        print(f"  Vp/Vs: {_format_value(vp_vs, 2)}")
+        print("=" * 35)
+
+    return result
+
+
 def calculate_rock_properties(phit, vclay, fluid_type='water', print_results=True):
     """
     Estimate Vp, Vs, density, Vp/Vs and impedances from porosity and clay volume.
