@@ -75,6 +75,17 @@ The vector store (`knowledge/vector_db.py`) uses **deterministic, content-derive
 
 `tools/rock_physics_tools.py::calculate_rock_properties` was reimplemented on **cited models** (verified against the Rock Physics Handbook): water-saturated Vp/Vs from **Han, Nur & Morgan (1986)** (40 MPa; φ clipped to [0,0.35], C to [0,0.5]); bulk density from mass balance; and **proper Gassmann fluid substitution** (`gassmann_sat`/`gassmann_dry`, forward/inverse) for oil/gas. The previous code's gas branch wrongly *reduced* Vs — Gassmann holds shear modulus fluid-independent, so gas LOWERS Vp but slightly RAISES Vs (lower density); this is now a regression test (`tests/test_rock_physics.py`). Mineral/fluid moduli live in `_K_QUARTZ`/`_K_CLAY`/`_FLUIDS`. The curated `knowledge/topics/rock_physics.py` Gassmann and Nur formulas were corrected (Gassmann ratio+forward forms; Nur is linear in **modulus**, not velocity). **Gardner (0.31 for m/s), RHG, and Wyllie in that file were verified CORRECT and left unchanged** — the original audit had Gardner's units backwards.
 
+`tools/rock_physics_tools.py::gassmann_substitution` exposes Gassmann fluid
+substitution as a standalone LLM-facing tool: in-situ `(vp, vs, rho)` + porosity +
+a fluid swap (`fluid_in`→`fluid_out`) → substituted `(vp, vs, rho, vp_vs, k_dry,
+k_sat, mu)`. It is built on the same verified `gassmann_sat`/`gassmann_dry`
+primitives as `calculate_rock_properties` (not a refactor of it). Preset fluids
+(`water`/`brine`/`oil`/`gas`) with optional `k_fl_*`/`rho_fl_*` overrides (GPa /
+g/cc); `k_mineral` in GPa (quartz default 37); vectorized; no plot. Shear modulus
+is held fluid-independent, so brine→gas LOWERS Vp and RAISES Vs. Covered by
+`tests/test_gassmann_substitution.py`. (Note: at φ=0 the dry-frame inversion is
+degenerate — `K_dry`→`K_mineral` — so the round-trip identity holds only for φ>0.)
+
 ## Input guards (physical validity)
 
 `tools/physics_guards.py` holds two-tier validity helpers used by both the registry
