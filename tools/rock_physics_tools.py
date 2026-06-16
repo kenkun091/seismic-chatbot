@@ -106,8 +106,11 @@ def gassmann_substitution(vp, vs, rho, phi, fluid_in, fluid_out,
     phi = np.asarray(phi, dtype=float)
 
     # REJECT non-physical inputs.
-    if np.any(phi < 0) or np.any(phi > 1):
-        raise ValueError("phi (porosity) must be within [0, 1]")
+    if np.any(phi <= 0) or np.any(phi > 1):
+        raise ValueError(
+            "phi (porosity) must be within (0, 1] "
+            "(zero porosity has no pore fluid to substitute)"
+        )
     if np.any(vp <= 0):
         raise ValueError("vp must be positive")
     if np.any(vs <= 0):
@@ -127,22 +130,26 @@ def gassmann_substitution(vp, vs, rho, phi, fluid_in, fluid_out,
     K_sat_in = rho_si * vp ** 2 - (4.0 / 3.0) * mu    # Pa
 
     # Invert to the dry frame, then forward-substitute the new fluid.
-    K_dry = gassmann_dry(K_sat_in, K0, K_fl_in, phi)
+    # np.errstate suppresses numpy's bare RuntimeWarnings (e.g. sqrt of a negative
+    # when inputs are inconsistent); our explicit non-physical warning below still fires.
+    with np.errstate(invalid="ignore", divide="ignore"):
+        K_dry = gassmann_dry(K_sat_in, K0, K_fl_in, phi)
+        K_sat_out = gassmann_sat(K_dry, K0, K_fl_out, phi)
+
+        # Density swap (only the pore fluid changes), g/cc.
+        rho_out = rho + phi * (rho_fl_out_val - rho_fl_in_val)
+        rho_out_si = rho_out * 1000.0
+
+        vp_out = np.sqrt((K_sat_out + (4.0 / 3.0) * mu) / rho_out_si)
+        vs_out = np.sqrt(mu / rho_out_si)
+        vp_vs = vp_out / vs_out
+
     if np.any(K_dry < 0) or np.any(K_dry > K0):
         warnings.warn(
             "Inverted dry-frame modulus is non-physical (K_dry < 0 or > K_mineral); "
             "check vp/vs/rho/phi/k_mineral consistency.",
             stacklevel=2,
         )
-    K_sat_out = gassmann_sat(K_dry, K0, K_fl_out, phi)
-
-    # Density swap (only the pore fluid changes), g/cc.
-    rho_out = rho + phi * (rho_fl_out_val - rho_fl_in_val)
-    rho_out_si = rho_out * 1000.0
-
-    vp_out = np.sqrt((K_sat_out + (4.0 / 3.0) * mu) / rho_out_si)
-    vs_out = np.sqrt(mu / rho_out_si)
-    vp_vs = vp_out / vs_out
 
     result = {
         "vp": vp_out, "vs": vs_out, "rho": rho_out, "vp_vs": vp_vs,

@@ -83,8 +83,8 @@ primitives as `calculate_rock_properties` (not a refactor of it). Preset fluids
 (`water`/`brine`/`oil`/`gas`) with optional `k_fl_*`/`rho_fl_*` overrides (GPa /
 g/cc); `k_mineral` in GPa (quartz default 37); vectorized; no plot. Shear modulus
 is held fluid-independent, so brine→gas LOWERS Vp and RAISES Vs. Covered by
-`tests/test_gassmann_substitution.py`. (Note: at φ=0 the dry-frame inversion is
-degenerate — `K_dry`→`K_mineral` — so the round-trip identity holds only for φ>0.)
+`tests/test_gassmann_substitution.py`. (Porosity must be in (0, 1]; φ=0 is
+rejected because a zero-porosity rock has no pore fluid to substitute.)
 
 ## Input guards (physical validity)
 

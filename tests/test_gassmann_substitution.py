@@ -91,6 +91,8 @@ def test_guards_reject_bad_inputs():
         gassmann_substitution(3000, 1500, 2.2, phi=0.2, fluid_in="brine", fluid_out="gas", k_mineral=0, print_results=False)
     with pytest.raises(ValueError):
         gassmann_substitution(3000, 1500, 2.2, phi=0.2, fluid_in="magma", fluid_out="gas", print_results=False)
+    with pytest.raises(ValueError):
+        gassmann_substitution(3000, 1500, 2.2, phi=0.0, fluid_in="brine", fluid_out="gas", print_results=False)
 
 
 def test_nonphysical_k_dry_warns_but_returns():
