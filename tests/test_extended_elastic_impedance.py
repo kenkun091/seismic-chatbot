@@ -1,7 +1,9 @@
+import os
+
 import numpy as np
 import pytest
 
-from tools.avo_tools import extended_elastic_impedance
+from tools.avo_tools import extended_elastic_impedance, plot_extended_elastic_impedance
 
 
 def test_chi_zero_is_acoustic_impedance():
@@ -72,11 +74,6 @@ def test_guard_rejects_nonpositive_reference():
     with pytest.raises(ValueError, match="must be positive"):
         extended_elastic_impedance(3000.0, 1500.0, 2.3, chi=[0.0],
                                    vp0=2800.0, vs0=1400.0, rho0=-1.0)
-
-
-import os
-
-from tools.avo_tools import plot_extended_elastic_impedance
 
 
 def test_eei_plot_returns_png_path():
