@@ -70,6 +70,61 @@ def _shuey_coefficients(vp1, vs1, rho1, vp2, vs2, rho2):
     F = 0.5 * d_vp / avg_vp
     return R0, G, F
 
+_CLASS_II_INTERCEPT = 0.02  # |intercept| band that defines a Class-II response
+
+_AVO_CLASS_DESCRIPTIONS = {
+    "I": "High-impedance contrast; amplitude dims (and may reverse polarity) with offset.",
+    "I*": "Atypical: positive intercept with non-negative gradient (amplitude rises with offset).",
+    "II": "Near-zero intercept; weak amplitude with a phase/polarity reversal with offset.",
+    "IIp": "Near-zero negative intercept; polarity reversal with offset.",
+    "III": "Classic bright spot (e.g. gas sand); amplitude brightens with offset.",
+    "IV": "Bright spot whose amplitude magnitude decreases with offset.",
+}
+
+
+def _classify_avo(intercept, gradient):
+    """Return (class_label, description) from the AVO intercept and gradient.
+
+    Rutherford & Williams (1989) / Castagna & Swan (1997), on the signs of
+    A (intercept) and B (gradient) with a near-zero-intercept band for Class II.
+    """
+    A, B = intercept, gradient
+    if abs(A) <= _CLASS_II_INTERCEPT:
+        cls = "IIp" if A < 0 else "II"
+    elif A > 0 and B < 0:
+        cls = "I"
+    elif A < 0 and B < 0:
+        cls = "III"
+    elif A < 0 and B > 0:
+        cls = "IV"
+    else:  # A > 0 and B >= 0
+        cls = "I*"
+    return cls, _AVO_CLASS_DESCRIPTIONS[cls]
+
+
+def avo_attributes(vp1, vs1, rho1, vp2, vs2, rho2):
+    """AVO intercept, gradient, and class for a single interface.
+
+    Args:
+        vp1, vs1, rho1: P/S velocity (m/s) and density (g/cc) of the upper medium.
+        vp2, vs2, rho2: P/S velocity (m/s) and density (g/cc) of the lower medium.
+
+    Returns:
+        dict: intercept (A), gradient (B), avo_class (I/I*/II/IIp/III/IV), and
+        avo_class_description.
+    """
+    require_elastic_medium(vp1, vs1, rho1, "upper medium")
+    require_elastic_medium(vp2, vs2, rho2, "lower medium")
+    R0, G, _ = _shuey_coefficients(vp1, vs1, rho1, vp2, vs2, rho2)
+    cls, desc = _classify_avo(R0, G)
+    return {
+        "intercept": float(R0),
+        "gradient": float(G),
+        "avo_class": cls,
+        "avo_class_description": desc,
+    }
+
+
 def shuey_reflectivity(vp1, vs1, rho1, vp2, vs2, rho2, angles):
     """
     Compute PP reflection coefficients using the Shuey approximation.

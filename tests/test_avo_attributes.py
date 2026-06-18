@@ -21,3 +21,55 @@ def test_shuey_reflectivity_unchanged_by_refactor():
     expected = R0 + G * np.sin(th) ** 2 + F * (np.tan(th) ** 2 - np.sin(th) ** 2)
     got = shuey_reflectivity(angles=angles, **args)
     assert np.allclose(got, expected)
+
+
+import pytest
+
+from tools.avo_tools import avo_attributes
+
+
+def test_intercept_gradient_match_helper():
+    args = dict(vp1=2400, vs1=1200, rho1=2.35, vp2=2000, vs2=1300, rho2=2.0)
+    R0, G, _ = _shuey_coefficients(**args)
+    res = avo_attributes(**args)
+    assert np.isclose(res["intercept"], R0)
+    assert np.isclose(res["gradient"], G)
+    # Independently pin the gradient against a hand-computed value (closes a
+    # coverage note: G must not be silently corrupted inside the helper).
+    d_vp, d_vs, d_rho = -400, 100, -0.35
+    avg_vp, avg_vs, avg_rho = 2200.0, 1250.0, 2.175
+    expected_G = 0.5 * d_vp / avg_vp - 2 * (avg_vs ** 2 / avg_vp ** 2) * (d_rho / avg_rho + 2 * d_vs / avg_vs)
+    assert np.isclose(res["gradient"], expected_G)
+
+
+def test_class_iii_gas_sand():
+    # Shale over gas sand: Vp and rho both drop -> A<0; gradient B<0 -> Class III.
+    res = avo_attributes(vp1=2400, vs1=1100, rho1=2.35, vp2=2000, vs2=1250, rho2=2.0)
+    assert res["intercept"] < 0 and res["gradient"] < 0
+    assert res["avo_class"] == "III"
+
+
+def test_class_i_hard_event():
+    # Soft shale over hard limestone: A>0, B<0 -> Class I.
+    res = avo_attributes(vp1=2500, vs1=1200, rho1=2.3, vp2=4000, vs2=2200, rho2=2.55)
+    assert res["intercept"] > 0 and res["gradient"] < 0
+    assert res["avo_class"] == "I"
+
+
+def test_class_iv_soft_sand_low_shear():
+    # Hard cap over soft gas sand with lower Vs: A<0, B>0 -> Class IV.
+    res = avo_attributes(vp1=3000, vs1=1700, rho1=2.4, vp2=2600, vs2=1100, rho2=2.15)
+    assert res["intercept"] < 0 and res["gradient"] > 0
+    assert res["avo_class"] == "IV"
+
+
+def test_class_ii_near_zero_intercept():
+    # Tuned so |A| <= 0.02 -> Class II.
+    res = avo_attributes(vp1=2500, vs1=1200, rho1=2.30, vp2=2560, vs2=1250, rho2=2.28)
+    assert abs(res["intercept"]) <= 0.02
+    assert res["avo_class"] in ("II", "IIp")
+
+
+def test_avo_attributes_rejects_unphysical_medium():
+    with pytest.raises(ValueError):
+        avo_attributes(vp1=2000, vs1=2200, rho1=2.3, vp2=2500, vs2=1200, rho2=2.4)  # vs1>=vp1
