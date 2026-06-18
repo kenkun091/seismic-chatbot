@@ -72,3 +72,17 @@ def test_guard_rejects_nonpositive_reference():
     with pytest.raises(ValueError, match="must be positive"):
         extended_elastic_impedance(3000.0, 1500.0, 2.3, chi=[0.0],
                                    vp0=2800.0, vs0=1400.0, rho0=-1.0)
+
+
+import os
+
+from tools.avo_tools import plot_extended_elastic_impedance
+
+
+def test_eei_plot_returns_png_path():
+    chi = np.linspace(-90, 90, 37)
+    eei = extended_elastic_impedance(3000.0, 1500.0, 2.3, chi=chi)
+    path = plot_extended_elastic_impedance(chi, eei)
+    assert isinstance(path, str) and path.endswith(".png")
+    assert os.path.exists(path)
+    os.remove(path)

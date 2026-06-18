@@ -200,6 +200,35 @@ def extended_elastic_impedance(vp, vs, rho, chi,
 
     return rvp * rrho * (vp / rvp) ** p * (vs / rvs) ** q * (rho / rrho) ** r
 
+
+def plot_extended_elastic_impedance(chi, eei, output_path=None):
+    """Plot EEI vs rotation angle chi and return the PNG path.
+
+    Marks chi=0 (where EEI equals the acoustic impedance) for reference.
+    """
+    import tempfile
+    import os
+
+    chi = np.asarray(chi, dtype=float)
+    eei = np.asarray(eei, dtype=float)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(chi, eei, "b-", linewidth=2, label="EEI(χ)")
+    ax.axvline(0.0, color="k", linewidth=0.6, alpha=0.5, label="χ=0 (AI)")
+    ax.set_xlabel("Rotation angle χ (degrees)")
+    ax.set_ylabel("Extended Elastic Impedance")
+    ax.set_title("Extended Elastic Impedance vs χ")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+
+    if output_path is None:
+        fd, output_path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
+
 def plot_avo_reflectivity(angles, rc, output_path=None):
     """
     Plot AVO reflectivity curve and return the path to the plot.
