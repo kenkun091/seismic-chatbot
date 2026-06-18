@@ -73,3 +73,27 @@ def test_class_ii_near_zero_intercept():
 def test_avo_attributes_rejects_unphysical_medium():
     with pytest.raises(ValueError):
         avo_attributes(vp1=2000, vs1=2200, rho1=2.3, vp2=2500, vs2=1200, rho2=2.4)  # vs1>=vp1
+
+
+from tools.avo_tools import _classify_avo
+
+
+def test_classify_iip_negative_intercept_in_band():
+    # A<0 within the near-zero band -> IIp (true polarity reversal).
+    cls, desc = _classify_avo(-0.01, -0.2)
+    assert cls == "IIp"
+    assert "reversal" in desc.lower()
+
+
+def test_classify_i_star_positive_intercept_nonneg_gradient():
+    # A>0, B>=0 -> I* (amplitude rises with offset).
+    cls, _ = _classify_avo(0.1, 0.05)
+    assert cls == "I*"
+    assert _classify_avo(0.1, 0.0)[0] == "I*"  # B==0 boundary
+
+
+def test_classify_flat_gradient_negative_intercept_is_class_iii():
+    # A<0, B==0: bright spot that holds with offset -> III (not the mislabeled I*).
+    cls, desc = _classify_avo(-0.1, 0.0)
+    assert cls == "III"
+    assert "positive intercept" not in desc.lower()

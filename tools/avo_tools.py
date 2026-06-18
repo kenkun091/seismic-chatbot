@@ -93,7 +93,9 @@ def _classify_avo(intercept, gradient):
         cls = "IIp" if A < 0 else "II"
     elif A > 0 and B < 0:
         cls = "I"
-    elif A < 0 and B < 0:
+    elif A < 0 and B <= 0:
+        # Negative intercept with a non-positive gradient (incl. flat B==0):
+        # a classic bright spot that brightens (or holds) with offset.
         cls = "III"
     elif A < 0 and B > 0:
         cls = "IV"
