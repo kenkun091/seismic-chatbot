@@ -151,6 +151,55 @@ def shuey_reflectivity(vp1, vs1, rho1, vp2, vs2, rho2, angles):
     rc = R0 + G * np.sin(angles) ** 2 + F * (np.tan(angles) ** 2 - np.sin(angles) ** 2)
     return rc
 
+def extended_elastic_impedance(vp, vs, rho, chi,
+                               vp0=None, vs0=None, rho0=None, k=None):
+    """Extended Elastic Impedance, EEI(chi) (Whitcombe, 2002).
+
+    EEI(chi) = Vp0*rho0 * (Vp/Vp0)^p * (Vs/Vs0)^q * (rho/rho0)^r
+        p = cos(chi) + sin(chi);  q = -8K*sin(chi);  r = cos(chi) - 4K*sin(chi)
+        K = (Vs/Vp)^2  (background; override with `k`)
+    chi is the rotation angle in degrees. At chi=0, EEI = Vp*rho (acoustic impedance).
+    Raw EEI (reference Vp0=Vs0=rho0=1) is returned unless ALL of vp0/vs0/rho0 are
+    supplied, in which case Whitcombe normalization is applied.
+
+    Args:
+        vp, vs, rho: scalar layer P/S velocity (m/s) and density (g/cc).
+        chi: array-like rotation angles in degrees (|chi| <= 90).
+        vp0, vs0, rho0: optional reference constants (all-or-nothing).
+        k: optional background (Vs/Vp)^2; default computed from vs/vp.
+
+    Returns:
+        np.ndarray of EEI values, one per chi.
+    """
+    require_elastic_medium(vp, vs, rho)
+
+    refs = (vp0, vs0, rho0)
+    n_set = sum(ref is not None for ref in refs)
+    if n_set not in (0, 3):
+        raise ValueError(
+            "reference constants vp0/vs0/rho0 are all-or-nothing: supply all three "
+            "(Whitcombe normalization) or none (raw EEI)."
+        )
+    if n_set == 3:
+        for name, ref in (("vp0", vp0), ("vs0", vs0), ("rho0", rho0)):
+            if ref <= 0:
+                raise ValueError(f"{name} must be positive (got {ref})")
+        rvp, rvs, rrho = float(vp0), float(vs0), float(rho0)
+    else:
+        rvp = rvs = rrho = 1.0
+
+    chi = np.atleast_1d(np.asarray(chi, dtype=float))
+    if np.any(np.abs(chi) > 90):
+        raise ValueError("chi (rotation angle) must be within [-90, 90] degrees")
+
+    K = (vs / vp) ** 2 if k is None else float(k)
+    x = np.radians(chi)
+    p = np.cos(x) + np.sin(x)
+    q = -8.0 * K * np.sin(x)
+    r = np.cos(x) - 4.0 * K * np.sin(x)
+
+    return rvp * rrho * (vp / rvp) ** p * (vs / rvs) ** q * (rho / rrho) ** r
+
 def plot_avo_reflectivity(angles, rc, output_path=None):
     """
     Plot AVO reflectivity curve and return the path to the plot.
