@@ -10,7 +10,7 @@ from typing import Callable, Optional
 
 from tools.ricker_tools import create_ricker_wavelet, create_ormsby_wavelet, plot_wavelet
 from tools.wedge_tools import create_wedge_model, plot_wedge_model, analyze_wedge, wedge_avo_gather, plot_wedge_gather, analyze_wedge_gather
-from tools.avo_tools import zoeppritz_reflectivity, shuey_reflectivity, plot_avo_reflectivity, avo_attributes, plot_avo_crossplot
+from tools.avo_tools import zoeppritz_reflectivity, shuey_reflectivity, plot_avo_reflectivity, avo_attributes, plot_avo_crossplot, extended_elastic_impedance, plot_extended_elastic_impedance
 from tools.rock_physics_tools import calculate_rock_properties, rock_physics_rag, gassmann_substitution
 from tools.rag_tools import knowledge_rag
 from tools.parameter_validation import validate_make_ricker, validate_wedge_model, validate_avo
@@ -350,6 +350,36 @@ REGISTRY = [
             "avo_class": {"type": "string", "description": "Optional AVO class label to annotate the point."},
         },
         required=["intercept", "gradient"],
+        defaults={},
+    ),
+    ToolSpec(
+        name="extended_elastic_impedance",
+        fn=extended_elastic_impedance,
+        description="Computes Extended Elastic Impedance EEI(χ) (Whitcombe 2002) for a layer across rotation angles χ in degrees. At χ=0 it equals the acoustic impedance Vp·ρ. Optionally Whitcombe-normalized when reference constants vp0/vs0/rho0 are all supplied. Auto-plots EEI vs χ.",
+        params={
+            "vp": {"type": "number", "description": "P-wave velocity of the layer in m/s."},
+            "vs": {"type": "number", "description": "S-wave velocity of the layer in m/s."},
+            "rho": {"type": "number", "description": "Density of the layer in g/cm³."},
+            "chi": {"type": "array", "items": {"type": "number"}, "description": "Rotation angles χ in degrees (|χ| ≤ 90)."},
+            "vp0": {"type": "number", "description": "Optional reference P-wave velocity (m/s) for Whitcombe normalization; supply with vs0 and rho0."},
+            "vs0": {"type": "number", "description": "Optional reference S-wave velocity (m/s) for Whitcombe normalization; supply with vp0 and rho0."},
+            "rho0": {"type": "number", "description": "Optional reference density (g/cm³) for Whitcombe normalization; supply with vp0 and vs0."},
+            "k": {"type": "number", "description": "Optional background (Vs/Vp)² constant; defaults to (vs/vp)² of the layer."},
+        },
+        required=["vp", "vs", "rho", "chi"],
+        defaults={},
+        validator=None,
+        auto_plot="plot_extended_elastic_impedance",
+    ),
+    ToolSpec(
+        name="plot_extended_elastic_impedance",
+        fn=plot_extended_elastic_impedance,
+        description="Plots Extended Elastic Impedance EEI vs rotation angle χ.",
+        params={
+            "chi": {"type": "array", "items": {"type": "number"}, "description": "Rotation angles χ in degrees."},
+            "eei": {"type": "array", "items": {"type": "number"}, "description": "EEI values, one per χ."},
+        },
+        required=["chi", "eei"],
         defaults={},
     ),
     ToolSpec(

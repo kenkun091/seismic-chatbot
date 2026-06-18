@@ -83,3 +83,16 @@ def test_eei_plot_returns_png_path():
     assert isinstance(path, str) and path.endswith(".png")
     assert os.path.exists(path)
     os.remove(path)
+
+
+def test_eei_registered_and_chained():
+    from core.tool_registry import REGISTRY_BY_NAME, AUTO_PLOT, TOOL_SCHEMAS
+
+    assert "extended_elastic_impedance" in REGISTRY_BY_NAME
+    assert "plot_extended_elastic_impedance" in REGISTRY_BY_NAME
+    assert AUTO_PLOT.get("extended_elastic_impedance") == "plot_extended_elastic_impedance"
+    spec = REGISTRY_BY_NAME["extended_elastic_impedance"]
+    assert set(spec.required) == {"vp", "vs", "rho", "chi"}
+    assert spec.validator is None
+    names = [s["name"] for s in TOOL_SCHEMAS]
+    assert "extended_elastic_impedance" in names and "plot_extended_elastic_impedance" in names
