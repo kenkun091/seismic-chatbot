@@ -170,6 +170,7 @@ Real pytest suite under `tests/` (the loose `test_*.py` at the package root are 
 ## Gotchas specific to this package
 
 - **AVO uses exact Aki-Richards Rpp.** `zoeppritz_reflectivity` was corrected to the exact Aki-Richards Rpp (commit `4b79490`); `shuey_reflectivity` is the linearized approximation. Keep them distinct.
+- **AVO interpretation attributes.** `tools/avo_tools.py::avo_attributes` returns the intercept (A), gradient (B), and AVO class (I/I*/II/IIp/III/IV) for an interface, derived from a shared `_shuey_coefficients` helper (so A/B are identical to `shuey_reflectivity`'s R0/G). Classification follows Rutherford-Williams/Castagna-Swan sign rules with a `|A| <= 0.02` Class-II band (`A<0, B<=0` → III so a flat-gradient negative-intercept event isn't mislabeled). It auto-plots `plot_avo_crossplot` (quadrant-shaded A-B plane). Covered by `tests/test_avo_attributes.py`.
 - `plot_ricker` requires `time_array` (no longer optional); `make_ormsby` requires `f1<f2<f3<f4`.
 - Setting `DEBUG` env var enables stderr debug prints and a `save.p` pickle of `wedge_model` inputs (a `save.p` may already sit in this dir from a prior run).
 - Committing from the *outer* repos will not stage this package; commit package work with `git` from inside this dir.
