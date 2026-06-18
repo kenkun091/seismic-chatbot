@@ -52,6 +52,24 @@ def zoeppritz_reflectivity(vp1, vs1, rho1, vp2, vs2, rho2, angles):
         rc.append(rpp)
     return np.array(rc)
 
+def _shuey_coefficients(vp1, vs1, rho1, vp2, vs2, rho2):
+    """Shuey three-term coefficients: intercept R0, gradient G, curvature F.
+
+    Pure (no guards, no angle). R0 is the normal-incidence reflectivity (AVO
+    intercept) and G is the AVO gradient. Shared by shuey_reflectivity and
+    avo_attributes so the two never diverge.
+    """
+    d_vp = vp2 - vp1
+    d_vs = vs2 - vs1
+    d_rho = rho2 - rho1
+    avg_vp = 0.5 * (vp1 + vp2)
+    avg_vs = 0.5 * (vs1 + vs2)
+    avg_rho = 0.5 * (rho1 + rho2)
+    R0 = 0.5 * (d_vp / avg_vp + d_rho / avg_rho)
+    G = 0.5 * d_vp / avg_vp - 2 * (avg_vs ** 2 / avg_vp ** 2) * (d_rho / avg_rho + 2 * d_vs / avg_vs)
+    F = 0.5 * d_vp / avg_vp
+    return R0, G, F
+
 def shuey_reflectivity(vp1, vs1, rho1, vp2, vs2, rho2, angles):
     """
     Compute PP reflection coefficients using the Shuey approximation.
@@ -71,16 +89,8 @@ def shuey_reflectivity(vp1, vs1, rho1, vp2, vs2, rho2, angles):
     if np.any(angles > 45):
         warnings.warn("AVO: incidence angles > 45 deg; results may be less reliable.", stacklevel=2)
     angles = np.radians(angles)
-    # Shuey coefficients
-    d_vp = vp2 - vp1
-    d_vs = vs2 - vs1
-    d_rho = rho2 - rho1
-    avg_vp = 0.5 * (vp1 + vp2)
-    avg_vs = 0.5 * (vs1 + vs2)
-    avg_rho = 0.5 * (rho1 + rho2)
-    R0 = 0.5 * (d_vp / avg_vp + d_rho / avg_rho)
-    G = 0.5 * d_vp / avg_vp - 2 * (avg_vs ** 2 / avg_vp ** 2) * (d_rho / avg_rho + 2 * d_vs / avg_vs)
-    F = 0.5 * d_vp / avg_vp
+    # Shuey coefficients (intercept R0, gradient G, curvature F).
+    R0, G, F = _shuey_coefficients(vp1, vs1, rho1, vp2, vs2, rho2)
     rc = R0 + G * np.sin(angles) ** 2 + F * (np.tan(angles) ** 2 - np.sin(angles) ** 2)
     return rc
 
