@@ -97,3 +97,28 @@ def test_classify_flat_gradient_negative_intercept_is_class_iii():
     cls, desc = _classify_avo(-0.1, 0.0)
     assert cls == "III"
     assert "positive intercept" not in desc.lower()
+
+
+import os
+
+from tools.avo_tools import plot_avo_crossplot
+
+
+def test_crossplot_returns_png_path():
+    path = plot_avo_crossplot(0.1, -0.2, "I")
+    assert isinstance(path, str) and path.endswith(".png")
+    assert os.path.exists(path)
+    os.remove(path)
+
+
+def test_crossplot_without_class_label():
+    path = plot_avo_crossplot(-0.15, -0.1)
+    assert os.path.exists(path)
+    os.remove(path)
+
+
+def test_crossplot_origin_point_not_degenerate():
+    # A point at the origin must still produce a valid figure (minimum extent).
+    path = plot_avo_crossplot(0.0, 0.0, "II")
+    assert os.path.exists(path)
+    os.remove(path)

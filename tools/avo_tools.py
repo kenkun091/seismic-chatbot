@@ -185,3 +185,55 @@ def plot_avo_reflectivity(angles, rc, output_path=None):
     plt.close()
     
     return output_path
+
+
+def plot_avo_crossplot(intercept, gradient, avo_class=None, output_path=None):
+    """Plot the AVO intercept-gradient (A-B) crossplot and return the PNG path.
+
+    Quadrants are lightly shaded and labeled by AVO class (I: A>0,B<0; III: A<0,B<0;
+    IV: A<0,B>0) with a Class-II band around A=0. The (intercept, gradient) point is
+    marked (annotated with avo_class when supplied).
+    """
+    import tempfile
+    import os
+    from matplotlib.patches import Rectangle
+
+    A, B = float(intercept), float(gradient)
+    # Symmetric extent that always includes the point and the origin, with a floor so
+    # a near-origin point doesn't collapse the axes.
+    e = max(abs(A), abs(B), 0.05) * 1.3
+
+    fig, ax = plt.subplots(figsize=(7, 7))
+    # Quadrant shading (class regions).
+    ax.add_patch(Rectangle((0, -e), e, e, color="tab:blue", alpha=0.08))   # I:   A>0, B<0
+    ax.add_patch(Rectangle((-e, -e), e, e, color="tab:red", alpha=0.08))   # III: A<0, B<0
+    ax.add_patch(Rectangle((-e, 0), e, e, color="tab:green", alpha=0.08))  # IV:  A<0, B>0
+    ax.axvspan(-_CLASS_II_INTERCEPT, _CLASS_II_INTERCEPT, color="gray", alpha=0.12)  # II band
+
+    # Class labels at quadrant centers.
+    ax.text(0.5 * e, -0.5 * e, "I", ha="center", va="center", fontsize=14, alpha=0.6)
+    ax.text(-0.5 * e, -0.5 * e, "III", ha="center", va="center", fontsize=14, alpha=0.6)
+    ax.text(-0.5 * e, 0.5 * e, "IV", ha="center", va="center", fontsize=14, alpha=0.6)
+    ax.text(0.0, 0.85 * e, "II", ha="center", va="center", fontsize=12, alpha=0.6)
+
+    ax.axhline(0.0, color="k", linewidth=0.6, alpha=0.5)
+    ax.axvline(0.0, color="k", linewidth=0.6, alpha=0.5)
+
+    ax.plot(A, B, "ko", markersize=9)
+    if avo_class:
+        ax.annotate(f"Class {avo_class}", (A, B), textcoords="offset points",
+                    xytext=(8, 8), fontsize=11, fontweight="bold")
+
+    ax.set_xlim(-e, e)
+    ax.set_ylim(-e, e)
+    ax.set_xlabel("Intercept (A)")
+    ax.set_ylabel("Gradient (B)")
+    ax.set_title("AVO Intercept-Gradient Crossplot")
+    ax.grid(True, alpha=0.3)
+
+    if output_path is None:
+        fd, output_path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
