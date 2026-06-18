@@ -10,7 +10,7 @@ from typing import Callable, Optional
 
 from tools.ricker_tools import create_ricker_wavelet, create_ormsby_wavelet, plot_wavelet
 from tools.wedge_tools import create_wedge_model, plot_wedge_model, analyze_wedge, wedge_avo_gather, plot_wedge_gather, analyze_wedge_gather
-from tools.avo_tools import zoeppritz_reflectivity, shuey_reflectivity, plot_avo_reflectivity
+from tools.avo_tools import zoeppritz_reflectivity, shuey_reflectivity, plot_avo_reflectivity, avo_attributes, plot_avo_crossplot
 from tools.rock_physics_tools import calculate_rock_properties, rock_physics_rag, gassmann_substitution
 from tools.rag_tools import knowledge_rag
 from tools.parameter_validation import validate_make_ricker, validate_wedge_model, validate_avo
@@ -321,6 +321,35 @@ REGISTRY = [
             },
         },
         required=["angles", "rc"],
+        defaults={},
+    ),
+    ToolSpec(
+        name="avo_attributes",
+        fn=avo_attributes,
+        description="Computes AVO interpretation attributes for an interface: intercept (A), gradient (B), and AVO class (I-IV) from the two media's Vp, Vs, and density. Auto-plots the intercept-gradient crossplot.",
+        params={
+            "vp1": {"type": "number", "description": "P-wave velocity of the upper medium in m/s."},
+            "vs1": {"type": "number", "description": "S-wave velocity of the upper medium in m/s."},
+            "rho1": {"type": "number", "description": "Density of the upper medium in g/cm³."},
+            "vp2": {"type": "number", "description": "P-wave velocity of the lower medium in m/s."},
+            "vs2": {"type": "number", "description": "S-wave velocity of the lower medium in m/s."},
+            "rho2": {"type": "number", "description": "Density of the lower medium in g/cm³."},
+        },
+        required=["vp1", "vs1", "rho1", "vp2", "vs2", "rho2"],
+        defaults={},
+        validator=None,
+        auto_plot="plot_avo_crossplot",
+    ),
+    ToolSpec(
+        name="plot_avo_crossplot",
+        fn=plot_avo_crossplot,
+        description="Plots the AVO intercept-gradient (A-B) crossplot with shaded class regions and the marked point.",
+        params={
+            "intercept": {"type": "number", "description": "AVO intercept A."},
+            "gradient": {"type": "number", "description": "AVO gradient B."},
+            "avo_class": {"type": "string", "description": "Optional AVO class label to annotate the point."},
+        },
+        required=["intercept", "gradient"],
         defaults={},
     ),
     ToolSpec(

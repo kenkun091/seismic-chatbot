@@ -73,6 +73,7 @@ Available tools:
 - zoeppritz_reflectivity: Calculates reflectivity using Zoeppritz equations
 - shuey_reflectivity: Calculates reflectivity using Shuey's approximation
 - plot_avo_reflectivity: Plots AVO reflectivity curves
+- avo_attributes: AVO intercept/gradient + class (I-IV) for an interface, with an intercept-gradient crossplot
 - gassmann_substitution: Gassmann fluid substitution from in-situ Vp/Vs/density + porosity (e.g. model the gas case of a brine sand)
 
 Guidelines:
@@ -702,7 +703,7 @@ within the constraints above."""
         """
         return (isinstance(tool_result, str) and 
                 tool_result.endswith(".png") and
-                tool_name in ["plot_ricker", "plot_wedge_model", "plot_avo_reflectivity", "plot_rock_properties", "plot_wedge_gather"])
+                tool_name in ["plot_ricker", "plot_wedge_model", "plot_avo_reflectivity", "plot_rock_properties", "plot_wedge_gather", "plot_avo_crossplot"])
     
     def _handle_automatic_chaining(self, tool_name: str, tool_input: Dict[str, Any], tool_result: Any) -> Optional[Dict[str, Any]]:
         """
@@ -739,6 +740,14 @@ within the constraints above."""
                 if not (isinstance(tool_result, np.ndarray) and "angles" in tool_input):
                     return None
                 plot_input = {"angles": tool_input["angles"], "rc": tool_result}
+            elif tool_name == "avo_attributes":
+                if not (isinstance(tool_result, dict) and "intercept" in tool_result):
+                    return None
+                plot_input = {
+                    "intercept": tool_result["intercept"],
+                    "gradient": tool_result["gradient"],
+                    "avo_class": tool_result.get("avo_class"),
+                }
             else:
                 return None
 
@@ -823,7 +832,11 @@ within the constraints above."""
                         "method": tool_name,
                         "parameters": tool_input
                     })
-                    
+
+            elif tool_name == "avo_attributes":
+                if isinstance(tool_result, dict) and "intercept" in tool_result:
+                    self.context_manager.set_context("last_avo_attributes", tool_result)
+
             elif tool_name == "calculate_rock_properties":
                 # Store rock properties data for reference
                 if isinstance(tool_result, tuple) and len(tool_result) == 6:

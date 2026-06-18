@@ -122,3 +122,16 @@ def test_crossplot_origin_point_not_degenerate():
     path = plot_avo_crossplot(0.0, 0.0, "II")
     assert os.path.exists(path)
     os.remove(path)
+
+
+def test_avo_attributes_registered_and_chained():
+    from core.tool_registry import REGISTRY_BY_NAME, AUTO_PLOT, TOOL_SCHEMAS
+
+    assert "avo_attributes" in REGISTRY_BY_NAME
+    assert "plot_avo_crossplot" in REGISTRY_BY_NAME
+    assert AUTO_PLOT.get("avo_attributes") == "plot_avo_crossplot"
+    spec = REGISTRY_BY_NAME["avo_attributes"]
+    assert set(spec.required) == {"vp1", "vs1", "rho1", "vp2", "vs2", "rho2"}
+    assert spec.validator is None
+    names = [s["name"] for s in TOOL_SCHEMAS]
+    assert "avo_attributes" in names and "plot_avo_crossplot" in names
