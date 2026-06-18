@@ -51,17 +51,24 @@ def test_k_override_changes_result():
     assert not np.isclose(default[0], overridden[0])
 
 
-def test_guards():
-    # vs >= vp -> unphysical medium.
-    with pytest.raises(ValueError):
+def test_guard_rejects_vs_ge_vp():
+    # vs >= vp -> unphysical medium (caught by require_elastic_medium).
+    with pytest.raises(ValueError, match="vs"):
         extended_elastic_impedance(2000.0, 2200.0, 2.3, chi=[0.0])
-    # |chi| > 90.
-    with pytest.raises(ValueError):
+
+
+def test_guard_rejects_chi_out_of_range():
+    with pytest.raises(ValueError, match="rotation angle"):
         extended_elastic_impedance(3000.0, 1500.0, 2.3, chi=[91.0])
-    # Partial reference constants (only vp0).
-    with pytest.raises(ValueError):
+
+
+def test_guard_rejects_partial_reference():
+    # Only vp0 supplied -> all-or-nothing rule.
+    with pytest.raises(ValueError, match="all-or-nothing"):
         extended_elastic_impedance(3000.0, 1500.0, 2.3, chi=[0.0], vp0=2800.0)
-    # Non-positive reference constant.
-    with pytest.raises(ValueError):
+
+
+def test_guard_rejects_nonpositive_reference():
+    with pytest.raises(ValueError, match="must be positive"):
         extended_elastic_impedance(3000.0, 1500.0, 2.3, chi=[0.0],
                                    vp0=2800.0, vs0=1400.0, rho0=-1.0)
