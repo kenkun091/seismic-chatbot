@@ -29,3 +29,8 @@ def test_update_context_caches_workflow_result(bot):
 def test_system_prompt_lists_petro_to_avo(bot):
     prompt = bot._create_system_prompt()
     assert "petro_to_avo" in prompt
+
+
+def test_system_prompt_lists_fluid_scenario(bot):
+    prompt = bot._create_system_prompt()
+    assert "fluid_scenario" in prompt
