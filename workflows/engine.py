@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 from workflows.recipes.petro_to_avo import petro_to_avo
+from workflows.recipes.fluid_scenario import fluid_scenario
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,31 @@ WORKFLOW_REGISTRY = [
         },
         required=["phit_sand", "vclay_sand", "phit_shale", "vclay_shale", "angles"],
         defaults={"fluid_sand": "brine", "fluid_shale": "water", "method": "shuey"},
+        auto_plot=None,
+    ),
+    WorkflowSpec(
+        name="fluid_scenario",
+        fn=fluid_scenario,
+        description=(
+            "AVO fluid-substitution scenarios: predict an in-situ sand and overlying "
+            "shale from porosity and clay volume, then use Gassmann fluid substitution "
+            "to model and compare the AVO response (reflectivity curve, intercept, "
+            "gradient, AVO class) for each pore fluid (e.g. brine vs gas). Returns the "
+            "per-fluid results and an overlaid comparison plot. Useful for DHI / "
+            "fluid-feasibility assessment."
+        ),
+        params={
+            "phit_sand": {"type": "number", "description": "Sand porosity (fraction, 0-1)."},
+            "vclay_sand": {"type": "number", "description": "Sand clay volume (fraction, 0-1)."},
+            "phit_shale": {"type": "number", "description": "Shale porosity (fraction, 0-1)."},
+            "vclay_shale": {"type": "number", "description": "Shale clay volume (fraction, 0-1)."},
+            "angles": {"type": "array", "items": {"type": "number"}, "description": "Incidence angles in degrees for the AVO curves."},
+            "fluids": {"type": "array", "items": {"type": "string"}, "description": "Pore fluids to compare, e.g. ['brine','gas'] (default). Each is 'brine'/'water', 'oil', or 'gas'."},
+            "fluid_in": {"type": "string", "description": "In-situ pore fluid the sand is predicted at before substitution (default 'brine')."},
+            "method": {"type": "string", "description": "Reflectivity method: 'shuey' (default) or 'zoeppritz'."},
+        },
+        required=["phit_sand", "vclay_sand", "phit_shale", "vclay_shale", "angles"],
+        defaults={"fluids": None, "fluid_in": "brine", "method": "shuey"},
         auto_plot=None,
     ),
 ]

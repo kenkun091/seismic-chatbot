@@ -19,3 +19,19 @@ def test_petro_to_avo_runs_through_tool_manager():
     assert isinstance(res, dict)
     assert res["avo_class"] in {"I", "I*", "II", "IIp", "III", "IV"}
     assert isinstance(res["image_path"], str) and res["image_path"].endswith(".png")
+
+
+def test_fluid_scenario_is_registered_meta_tool():
+    assert "fluid_scenario" in reg.REGISTRY_BY_NAME
+    assert "fluid_scenario" in reg.TOOL_FUNCTIONS
+    assert {t["name"] for t in reg.TOOL_SCHEMAS} >= {"fluid_scenario"}
+
+
+def test_fluid_scenario_runs_through_tool_manager():
+    tm = ToolManager()
+    res = tm.execute_tool("fluid_scenario", {
+        "phit_sand": 0.28, "vclay_sand": 0.10,
+        "phit_shale": 0.10, "vclay_shale": 0.50, "angles": [0, 10, 20, 30],
+    })
+    assert set(res["cases"]) == {"brine", "gas"}  # default fluids
+    assert isinstance(res["image_path"], str) and res["image_path"].endswith(".png")
