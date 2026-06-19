@@ -3,6 +3,8 @@ import pytest
 
 from workflows.types import Layer
 from workflows.adapters import _reduce, predict_layer
+from tools.avo_tools import shuey_reflectivity
+from workflows.adapters import build_interface
 
 
 def test_reduce_mean_median_index():
@@ -33,3 +35,29 @@ def test_predict_layer_reduces_array_log_to_scalar():
     ly = predict_layer([0.1, 0.3], [0.0, 0.0], fluid="water", reduce="mean")
     assert isinstance(ly.vp, float)
     assert np.isclose(ly.vp, 4204.0, rtol=1e-3)
+
+
+def test_build_interface_keys_and_values():
+    upper = Layer(2500.0, 1200.0, 2.30, "shale")
+    lower = Layer(3200.0, 1800.0, 2.15, "sand")
+    iface = build_interface(upper, lower)
+    assert iface == {
+        "vp1": 2500.0, "vs1": 1200.0, "rho1": 2.30,
+        "vp2": 3200.0, "vs2": 1800.0, "rho2": 2.15,
+    }
+
+
+def test_build_interface_feeds_shuey():
+    # The whole point of G1: the assembled dict must satisfy shuey_reflectivity's
+    # exact kwargs, proving the contract connects end-to-end.
+    upper = Layer(2500.0, 1200.0, 2.30, "shale")
+    lower = Layer(3200.0, 1800.0, 2.15, "sand")
+    rc = shuey_reflectivity(**build_interface(upper, lower), angles=[0, 10, 20, 30])
+    assert np.asarray(rc).shape == (4,)
+
+
+def test_build_interface_rejects_nonphysical_layer():
+    bad = Layer(3000.0, 3200.0, 2.2, "bad")  # vs >= vp is non-physical
+    good = Layer(2500.0, 1200.0, 2.3, "ok")
+    with pytest.raises(ValueError):
+        build_interface(good, bad)

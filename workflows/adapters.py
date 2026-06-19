@@ -46,3 +46,16 @@ def predict_layer(phit, vclay, fluid="water", *, reduce="mean", label=""):
     )
     require_elastic_medium(layer.vp, layer.vs, layer.rho, label=label or "layer")
     return layer
+
+
+def build_interface(upper: Layer, lower: Layer) -> dict:
+    """Assemble two layers into the AVO interface dict the reflectivity tools expect.
+
+    Returns {vp1, vs1, rho1, vp2, vs2, rho2} (G1). Rejects non-physical layers.
+    """
+    require_elastic_medium(upper.vp, upper.vs, upper.rho, label=upper.label or "upper")
+    require_elastic_medium(lower.vp, lower.vs, lower.rho, label=lower.label or "lower")
+    return {
+        "vp1": upper.vp, "vs1": upper.vs, "rho1": upper.rho,
+        "vp2": lower.vp, "vs2": lower.vs, "rho2": lower.rho,
+    }
