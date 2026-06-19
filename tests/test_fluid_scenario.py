@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import pytest
 
@@ -47,3 +49,15 @@ def test_fluid_scenario_shuey_intercept_consistency():
 def test_fluid_scenario_rejects_bad_method():
     with pytest.raises(ValueError):
         fluid_scenario(0.28, 0.10, 0.10, 0.50, [0, 10], method="bogus")
+
+
+def test_fluid_scenario_returns_image_path():
+    res = fluid_scenario(
+        phit_sand=0.28, vclay_sand=0.10,
+        phit_shale=0.10, vclay_shale=0.50,
+        angles=[0, 10, 20, 30], fluids=["brine", "gas"],
+    )
+    path = res["image_path"]
+    assert isinstance(path, str) and path.endswith(".png")
+    assert os.path.getsize(path) > 0
+    os.remove(path)

@@ -6,7 +6,11 @@ the interpretation workflow: log-derived in-situ properties, substituted to
 alternate fluids to test the AVO / DHI response. The per-fluid sand layers are
 organized in a Scenario. The composite plot is added in Task 2.
 """
+import os
+import tempfile
+
 import numpy as np
+import matplotlib.pyplot as plt
 
 from workflows.types import Scenario
 from workflows.adapters import predict_layer, build_interface, layer_from_gassmann
@@ -56,6 +60,8 @@ def fluid_scenario(phit_sand, vclay_sand, phit_shale, vclay_shale, angles,
             "avo_class_description": attrs["avo_class_description"],
         }
 
+    image_path = plot_fluid_scenario(shale, angles, cases, method)
+
     return {
         "shale": {"vp": shale.vp, "vs": shale.vs, "rho": shale.rho, "label": shale.label},
         "fluids": list(fluids),
@@ -63,4 +69,45 @@ def fluid_scenario(phit_sand, vclay_sand, phit_shale, vclay_shale, angles,
         "cases": cases,
         "angles": [float(a) for a in angles],
         "method": method,
+        "image_path": image_path,
     }
+
+
+def plot_fluid_scenario(shale, angles, cases, method, output_path=None):
+    """Overlaid composite: R(theta) per fluid (left) and A-B points per fluid (right)."""
+    if output_path is None:
+        fd, output_path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+    angles = np.asarray(angles, dtype=float)
+
+    fig, (ax_rc, ax_ab) = plt.subplots(1, 2, figsize=(12, 5))
+
+    for f, res in cases.items():
+        ax_rc.plot(angles, np.asarray(res["rc"], dtype=float), "o-", label=f)
+        ax_ab.plot([res["intercept"]], [res["gradient"]], "s", markersize=10,
+                   label=f"{f} ({res['avo_class']})")
+
+    ax_rc.axhline(0.0, color="grey", lw=0.8, ls="--")
+    ax_rc.set_xlabel("Incidence angle (deg)")
+    ax_rc.set_ylabel("Reflection coefficient")
+    ax_rc.set_title(f"AVO by fluid ({method})")
+    ax_rc.legend()
+    ax_rc.grid(True, alpha=0.3)
+
+    vals = [abs(res["intercept"]) for res in cases.values()]
+    vals += [abs(res["gradient"]) for res in cases.values()]
+    lim = max(0.1, max(vals) * 1.5)
+    ax_ab.axhline(0.0, color="grey", lw=0.8)
+    ax_ab.axvline(0.0, color="grey", lw=0.8)
+    ax_ab.set_xlim(-lim, lim)
+    ax_ab.set_ylim(-lim, lim)
+    ax_ab.set_xlabel("Intercept A")
+    ax_ab.set_ylabel("Gradient B")
+    ax_ab.set_title("Intercept-Gradient by fluid")
+    ax_ab.legend()
+
+    fig.suptitle(f"Fluid scenarios: sand below {shale.label}")
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
