@@ -59,3 +59,21 @@ def build_interface(upper: Layer, lower: Layer) -> dict:
         "vp1": upper.vp, "vs1": upper.vs, "rho1": upper.rho,
         "vp2": lower.vp, "vs2": lower.vs, "rho2": lower.rho,
     }
+
+
+def build_earth_model(layers) -> dict:
+    """Assemble exactly 3 layers into the wedge-model input dict (G1).
+
+    Returns {v1, v2, v3, rho1, rho2, rho3, vs1, vs2, vs3} keyed for create_wedge_model.
+    """
+    layers = list(layers)
+    if len(layers) != 3:
+        raise ValueError(f"build_earth_model expects exactly 3 layers (got {len(layers)})")
+    for i, ly in enumerate(layers, start=1):
+        require_elastic_medium(ly.vp, ly.vs, ly.rho, label=ly.label or f"layer{i}")
+    l1, l2, l3 = layers
+    return {
+        "v1": l1.vp, "v2": l2.vp, "v3": l3.vp,
+        "rho1": l1.rho, "rho2": l2.rho, "rho3": l3.rho,
+        "vs1": l1.vs, "vs2": l2.vs, "vs3": l3.vs,
+    }

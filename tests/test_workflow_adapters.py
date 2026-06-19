@@ -61,3 +61,34 @@ def test_build_interface_rejects_nonphysical_layer():
     good = Layer(2500.0, 1200.0, 2.3, "ok")
     with pytest.raises(ValueError):
         build_interface(good, bad)
+
+
+from tools.wedge_tools import create_wedge_model
+from workflows.adapters import build_earth_model
+
+
+def test_build_earth_model_keys():
+    l1 = Layer(2500.0, 1200.0, 2.30, "shale")
+    l2 = Layer(3200.0, 1800.0, 2.15, "sand")
+    l3 = Layer(2600.0, 1250.0, 2.32, "shale")
+    em = build_earth_model([l1, l2, l3])
+    assert em == {
+        "v1": 2500.0, "v2": 3200.0, "v3": 2600.0,
+        "rho1": 2.30, "rho2": 2.15, "rho3": 2.32,
+        "vs1": 1200.0, "vs2": 1800.0, "vs3": 1250.0,
+    }
+
+
+def test_build_earth_model_requires_three_layers():
+    l1 = Layer(2500.0, 1200.0, 2.30)
+    with pytest.raises(ValueError):
+        build_earth_model([l1, l1])  # only 2 layers
+
+
+def test_build_earth_model_feeds_create_wedge_model():
+    l1 = Layer(2500.0, 1200.0, 2.30, "shale")
+    l2 = Layer(3200.0, 1800.0, 2.15, "sand")
+    l3 = Layer(2600.0, 1250.0, 2.32, "shale")
+    result = create_wedge_model(max_thickness=50.0, **build_earth_model([l1, l2, l3]))
+    # create_wedge_model returns (time_array, model, synthetic, parameters)
+    assert len(result) == 4
