@@ -14,6 +14,7 @@ from tools.avo_tools import zoeppritz_reflectivity, shuey_reflectivity, plot_avo
 from tools.rock_physics_tools import calculate_rock_properties, rock_physics_rag, gassmann_substitution
 from tools.rag_tools import knowledge_rag
 from workflows.adapters import predict_elastic_layer
+from workflows.engine import WORKFLOW_REGISTRY
 from tools.parameter_validation import validate_make_ricker, validate_wedge_model, validate_avo
 
 
@@ -486,6 +487,23 @@ REGISTRY = [
         auto_plot=None,
     ),
 ]
+
+# Workflows are declared in workflows/engine.py and exposed here as meta-tools,
+# so all schema/function/dispatch derivation below applies to them unchanged.
+_WORKFLOW_TOOL_SPECS = [
+    ToolSpec(
+        name=w.name,
+        fn=w.fn,
+        description=w.description,
+        params=w.params,
+        required=w.required,
+        defaults=w.defaults,
+        validator=None,
+        auto_plot=w.auto_plot,
+    )
+    for w in WORKFLOW_REGISTRY
+]
+REGISTRY = REGISTRY + _WORKFLOW_TOOL_SPECS
 
 
 def to_openai_schema(spec: ToolSpec) -> dict:
