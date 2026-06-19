@@ -92,3 +92,20 @@ def test_build_earth_model_feeds_create_wedge_model():
     result = create_wedge_model(max_thickness=50.0, **build_earth_model([l1, l2, l3]))
     # create_wedge_model returns (time_array, model, synthetic, parameters)
     assert len(result) == 4
+
+
+from workflows.adapters import layer_from_gassmann
+
+
+def test_layer_from_gassmann_brine_to_gas():
+    # Shear modulus is fluid-independent: gas LOWERS Vp and RAISES Vs (lower density),
+    # and lowers bulk density. Result must be a scalar Layer (G2 + G3).
+    ly = layer_from_gassmann(
+        vp=3000.0, vs=1500.0, rho=2.2, phi=0.2,
+        fluid_in="brine", fluid_out="gas", label="gas-sand",
+    )
+    assert isinstance(ly.vp, float)
+    assert ly.vp < 3000.0
+    assert ly.vs > 1500.0
+    assert ly.rho < 2.2
+    assert ly.label == "gas-sand"

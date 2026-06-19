@@ -77,3 +77,25 @@ def build_earth_model(layers) -> dict:
         "rho1": l1.rho, "rho2": l2.rho, "rho3": l3.rho,
         "vs1": l1.vs, "vs2": l2.vs, "vs3": l3.vs,
     }
+
+
+def layer_from_gassmann(vp, vs, rho, phi, fluid_in, fluid_out,
+                        *, reduce="mean", label="", **kwargs) -> Layer:
+    """Run Gassmann fluid substitution and adapt the result dict into a `Layer` (G2).
+
+    Extra kwargs (k_mineral, k_fl_in, rho_fl_in, k_fl_out, rho_fl_out) pass through
+    to gassmann_substitution.
+    """
+    res = gassmann_substitution(
+        vp=vp, vs=vs, rho=rho, phi=phi,
+        fluid_in=fluid_in, fluid_out=fluid_out,
+        print_results=False, **kwargs,
+    )
+    layer = Layer(
+        vp=_reduce(res["vp"], reduce),
+        vs=_reduce(res["vs"], reduce),
+        rho=_reduce(res["rho"], reduce),
+        label=label,
+    )
+    require_elastic_medium(layer.vp, layer.vs, layer.rho, label=label or "substituted")
+    return layer
