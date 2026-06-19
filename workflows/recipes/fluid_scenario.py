@@ -4,7 +4,8 @@ Predict the in-situ sand and overlying shale from petrophysics, then use Gassman
 fluid substitution to model the AVO response for each scenario fluid. This mirrors
 the interpretation workflow: log-derived in-situ properties, substituted to
 alternate fluids to test the AVO / DHI response. The per-fluid sand layers are
-organized in a Scenario. The composite plot is added in Task 2.
+organized in a Scenario, and an overlaid composite plot (R(theta) and the
+intercept-gradient points per fluid) is returned via image_path.
 """
 import os
 import tempfile
@@ -28,6 +29,8 @@ def fluid_scenario(phit_sand, vclay_sand, phit_shale, vclay_shale, angles,
         raise ValueError(f"method must be 'shuey' or 'zoeppritz' (got {method!r})")
     if fluids is None:
         fluids = ["brine", "gas"]
+    if not fluids:
+        raise ValueError("fluids must contain at least one pore fluid")
 
     rc_fn = shuey_reflectivity if method == "shuey" else zoeppritz_reflectivity
     shale = predict_layer(phit_shale, vclay_shale, fluid="water", label="shale")
@@ -96,7 +99,7 @@ def plot_fluid_scenario(shale, angles, cases, method, output_path=None):
 
     vals = [abs(res["intercept"]) for res in cases.values()]
     vals += [abs(res["gradient"]) for res in cases.values()]
-    lim = max(0.1, max(vals) * 1.5)
+    lim = max(0.1, max(vals, default=0.0) * 1.5)
     ax_ab.axhline(0.0, color="grey", lw=0.8)
     ax_ab.axvline(0.0, color="grey", lw=0.8)
     ax_ab.set_xlim(-lim, lim)

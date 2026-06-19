@@ -51,6 +51,11 @@ def test_fluid_scenario_rejects_bad_method():
         fluid_scenario(0.28, 0.10, 0.10, 0.50, [0, 10], method="bogus")
 
 
+def test_fluid_scenario_rejects_empty_fluids():
+    with pytest.raises(ValueError):
+        fluid_scenario(0.28, 0.10, 0.10, 0.50, [0, 10], fluids=[])
+
+
 def test_fluid_scenario_returns_image_path():
     res = fluid_scenario(
         phit_sand=0.28, vclay_sand=0.10,
