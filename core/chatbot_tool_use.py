@@ -655,7 +655,11 @@ within the constraints above."""
                 # Handle special cases for image outputs
                 if self._is_image_output(tool_name, tool_result):
                     return {"image_path": tool_result}
-                
+
+                workflow_image = self._workflow_image_output(tool_result)
+                if workflow_image is not None:
+                    return workflow_image
+
                 # Handle automatic chaining
                 chained_result = self._handle_automatic_chaining(tool_name, tool_input, tool_result)
                 if chained_result:
@@ -691,6 +695,14 @@ within the constraints above."""
                 result = str(result)
             return result
     
+    def _workflow_image_output(self, tool_result):
+        """Surface a composite plot path from a workflow's dict result, if present."""
+        if isinstance(tool_result, dict):
+            path = tool_result.get("image_path")
+            if isinstance(path, str) and path.endswith(".png"):
+                return {"image_path": path}
+        return None
+
     def _is_image_output(self, tool_name: str, tool_result: Any) -> bool:
         """
         Check if the tool result is an image output.
