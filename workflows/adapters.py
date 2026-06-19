@@ -99,3 +99,13 @@ def layer_from_gassmann(vp, vs, rho, phi, fluid_in, fluid_out,
     )
     require_elastic_medium(layer.vp, layer.vs, layer.rho, label=label or "substituted")
     return layer
+
+
+def predict_elastic_layer(phit, vclay, fluid="water", reduce="mean") -> dict:
+    """LLM-facing leaf tool: representative elastic properties of one layer as a dict.
+
+    Thin wrapper over predict_layer that returns a JSON-friendly dict (no Layer type),
+    so it can be registered as a standard leaf tool.
+    """
+    layer = predict_layer(phit, vclay, fluid=fluid, reduce=reduce)
+    return {"vp": layer.vp, "vs": layer.vs, "rho": layer.rho, "vp_vs": layer.vp / layer.vs}

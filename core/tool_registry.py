@@ -13,6 +13,7 @@ from tools.wedge_tools import create_wedge_model, plot_wedge_model, analyze_wedg
 from tools.avo_tools import zoeppritz_reflectivity, shuey_reflectivity, plot_avo_reflectivity, avo_attributes, plot_avo_crossplot, extended_elastic_impedance, plot_extended_elastic_impedance
 from tools.rock_physics_tools import calculate_rock_properties, rock_physics_rag, gassmann_substitution
 from tools.rag_tools import knowledge_rag
+from workflows.adapters import predict_elastic_layer
 from tools.parameter_validation import validate_make_ricker, validate_wedge_model, validate_avo
 
 
@@ -468,6 +469,21 @@ REGISTRY = [
         },
         required=["query"],
         defaults={"domain": None, "top_k": 3},
+    ),
+    ToolSpec(
+        name="predict_elastic_layer",
+        fn=predict_elastic_layer,
+        description="Predicts representative elastic properties (Vp, Vs, density, Vp/Vs ratio) of a single rock layer from porosity (phit) and clay volume (vclay) using the Han et al. (1986) rock-physics model. Reduces a log of samples to one representative scalar layer. Returns a dict; no plot.",
+        params={
+            "phit": {"type": "array", "items": {"type": "number"}, "description": "Porosity values (fraction, 0-1); a single value or a log array."},
+            "vclay": {"type": "array", "items": {"type": "number"}, "description": "Clay volume values (fraction, 0-1)."},
+            "fluid": {"type": "string", "description": "Pore fluid: 'water'/'brine', 'oil', or 'gas' (default 'water')."},
+            "reduce": {"type": "string", "description": "How to reduce a log array to one scalar layer: 'mean' or 'median' (default 'mean')."},
+        },
+        required=["phit", "vclay"],
+        defaults={"fluid": "water", "reduce": "mean"},
+        validator=None,
+        auto_plot=None,
     ),
 ]
 
