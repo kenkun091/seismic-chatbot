@@ -22,7 +22,7 @@ py-modules = ["main"]
 [tool.setuptools.packages.find]
 # Flat layout: each top-level dir is its own importable package (matching the
 # existing absolute imports, e.g. `from config.settings import ...`).
-include = ["config*", "core*", "tools*", "knowledge*", "parsing*", "interfaces*"]
+include = ["config*", "core*", "tools*", "knowledge*", "parsing*", "interfaces*", "workflows*"]
 exclude = ["tests*"]
 
 [tool.setuptools.dynamic]
