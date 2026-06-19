@@ -18,3 +18,14 @@ def test_workflow_image_output_none_when_no_png(bot):
     assert bot._workflow_image_output({"avo_class": "III"}) is None
     assert bot._workflow_image_output({"image_path": 123}) is None
     assert bot._workflow_image_output("not-a-dict") is None
+
+
+def test_update_context_caches_workflow_result(bot):
+    result = {"avo_class": "III", "image_path": "/tmp/x.png"}
+    bot._update_context("petro_to_avo", {"phit_sand": 0.25}, result)
+    assert bot.context_manager.get_context("last_workflow_result") == result
+
+
+def test_system_prompt_lists_petro_to_avo(bot):
+    prompt = bot._create_system_prompt()
+    assert "petro_to_avo" in prompt

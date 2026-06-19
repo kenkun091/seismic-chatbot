@@ -8,6 +8,7 @@ from .tool_manager import ToolManager
 from .context_manager import ContextManager
 from knowledge.knowledge_base import KnowledgeBase
 from core.tool_registry import AUTO_PLOT
+from workflows.engine import WORKFLOW_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,7 @@ Available tools:
 - avo_attributes: AVO intercept/gradient + class (I-IV) for an interface, with an intercept-gradient crossplot
 - extended_elastic_impedance: Extended Elastic Impedance EEI(χ) for a layer (AI at χ=0), with an EEI-vs-χ plot
 - gassmann_substitution: Gassmann fluid substitution from in-situ Vp/Vs/density + porosity (e.g. model the gas case of a brine sand)
+- petro_to_avo: End-to-end AVO feasibility from petrophysics — predicts sand & shale elastic properties from porosity/clay, models the AVO response, and returns the intercept/gradient/AVO class with a composite plot.
 
 Guidelines:
 1. Be helpful and concise in your responses
@@ -878,7 +880,11 @@ within the constraints above."""
                         "fluid_type": tool_input.get("fluid_type", "water"),
                         "parameters": tool_input
                     })
-                
+
+            elif tool_name in WORKFLOW_NAMES:
+                if isinstance(tool_result, dict):
+                    self.context_manager.set_context("last_workflow_result", tool_result)
+
         except Exception as e:
             logger.error(f"Error updating context: {e}")
 
