@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 
 from workflows.adapters import predict_layer
@@ -40,3 +42,15 @@ def test_petro_to_avo_rejects_bad_method():
     import pytest
     with pytest.raises(ValueError):
         petro_to_avo(0.25, 0.10, 0.10, 0.50, [0, 10], method="bogus")
+
+
+def test_petro_to_avo_returns_image_path():
+    res = petro_to_avo(
+        phit_sand=0.25, vclay_sand=0.10,
+        phit_shale=0.10, vclay_shale=0.50,
+        angles=[0, 10, 20, 30], fluid_sand="gas", method="shuey",
+    )
+    path = res["image_path"]
+    assert isinstance(path, str) and path.endswith(".png")
+    assert os.path.getsize(path) > 0
+    os.remove(path)
