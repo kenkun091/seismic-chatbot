@@ -35,3 +35,19 @@ def test_fluid_scenario_runs_through_tool_manager():
     })
     assert set(res["cases"]) == {"brine", "gas"}  # default fluids
     assert isinstance(res["image_path"], str) and res["image_path"].endswith(".png")
+
+
+def test_tuning_is_registered_meta_tool():
+    assert "tuning" in reg.REGISTRY_BY_NAME
+    assert "tuning" in reg.TOOL_FUNCTIONS
+    assert {t["name"] for t in reg.TOOL_SCHEMAS} >= {"tuning"}
+
+
+def test_tuning_runs_through_tool_manager():
+    tm = ToolManager()
+    res = tm.execute_tool("tuning", {
+        "phit_sand": 0.28, "vclay_sand": 0.10,
+        "phit_shale": 0.10, "vclay_shale": 0.50, "max_thickness": 40.0,
+    })
+    assert res["tuning_thickness"] > 0
+    assert isinstance(res["image_path"], str) and res["image_path"].endswith(".png")

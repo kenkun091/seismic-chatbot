@@ -11,6 +11,7 @@ from typing import Callable, Optional
 
 from workflows.recipes.petro_to_avo import petro_to_avo
 from workflows.recipes.fluid_scenario import fluid_scenario
+from workflows.recipes.tuning import tuning
 
 
 @dataclass(frozen=True)
@@ -73,6 +74,31 @@ WORKFLOW_REGISTRY = [
         },
         required=["phit_sand", "vclay_sand", "phit_shale", "vclay_shale", "angles"],
         defaults={"fluids": None, "fluid_in": "brine", "method": "shuey"},
+        auto_plot=None,
+    ),
+    WorkflowSpec(
+        name="tuning",
+        fn=tuning,
+        description=(
+            "Wedge tuning / vertical-resolution analysis: predict a sand and encasing "
+            "shale from porosity and clay volume, build a sand wedge between two shale "
+            "layers, and analyze the amplitude-vs-thickness response for the tuning "
+            "thickness and resolution limit at a given wavelet frequency. Returns the "
+            "tuning thickness, resolution limit, the amplitude-vs-thickness curve, and "
+            "a tuning-curve plot."
+        ),
+        params={
+            "phit_sand": {"type": "number", "description": "Sand porosity (fraction, 0-1)."},
+            "vclay_sand": {"type": "number", "description": "Sand clay volume (fraction, 0-1)."},
+            "phit_shale": {"type": "number", "description": "Shale porosity (fraction, 0-1)."},
+            "vclay_shale": {"type": "number", "description": "Shale clay volume (fraction, 0-1)."},
+            "max_thickness": {"type": "number", "description": "Maximum wedge thickness in meters."},
+            "wavelet_freq": {"type": "number", "description": "Ricker wavelet dominant frequency in Hz (default 30)."},
+            "num_traces": {"type": "integer", "description": "Number of thickness traces across the wedge (default 61)."},
+            "fluid_sand": {"type": "string", "description": "Sand pore fluid: 'brine'/'water', 'oil', or 'gas' (default 'brine')."},
+        },
+        required=["phit_sand", "vclay_sand", "phit_shale", "vclay_shale", "max_thickness"],
+        defaults={"wavelet_freq": 30.0, "num_traces": 61, "fluid_sand": "brine"},
         auto_plot=None,
     ),
 ]
