@@ -79,6 +79,7 @@ Available tools:
 - gassmann_substitution: Gassmann fluid substitution from in-situ Vp/Vs/density + porosity (e.g. model the gas case of a brine sand)
 - petro_to_avo: End-to-end AVO feasibility from petrophysics — predicts sand & shale elastic properties from porosity/clay, models the AVO response, and returns the intercept/gradient/AVO class with a composite plot.
 - fluid_scenario: AVO fluid-substitution scenarios — predicts sand & shale from porosity/clay, Gassmann-substitutes the sand across fluids (e.g. brine vs gas), and returns per-fluid AVO class/intercept/gradient with an overlaid comparison plot (DHI feasibility).
+- tuning: Wedge tuning / vertical-resolution analysis — predicts a sand & encasing shale from porosity/clay, builds a sand wedge, and returns the tuning thickness, resolution limit, and amplitude-vs-thickness curve with a plot.
 
 Guidelines:
 1. Be helpful and concise in your responses

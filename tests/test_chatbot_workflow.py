@@ -34,3 +34,10 @@ def test_system_prompt_lists_petro_to_avo(bot):
 def test_system_prompt_lists_fluid_scenario(bot):
     prompt = bot._create_system_prompt()
     assert "fluid_scenario" in prompt
+
+
+def test_system_prompt_lists_tuning(bot):
+    # Match the bullet prefix specifically: the word "tuning" may already appear
+    # inside other wedge-tool descriptions, but "- tuning:" is the new bullet.
+    prompt = bot._create_system_prompt()
+    assert "- tuning:" in prompt
