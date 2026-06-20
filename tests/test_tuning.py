@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import pytest
 
@@ -43,3 +45,15 @@ def test_tuning_higher_freq_resolves_thinner():
     hi = tuning(0.28, 0.10, 0.10, 0.50, max_thickness=40.0, wavelet_freq=50.0)
     assert hi["tuning_thickness"] < lo["tuning_thickness"]
     assert hi["resolution_limit"] < lo["resolution_limit"]
+
+
+def test_tuning_returns_image_path():
+    res = tuning(
+        phit_sand=0.28, vclay_sand=0.10,
+        phit_shale=0.10, vclay_shale=0.50,
+        max_thickness=40.0, wavelet_freq=30.0, num_traces=41,
+    )
+    path = res["image_path"]
+    assert isinstance(path, str) and path.endswith(".png")
+    assert os.path.getsize(path) > 0
+    os.remove(path)

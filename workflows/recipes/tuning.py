@@ -5,7 +5,11 @@ wedge between two shale layers, convolve to a synthetic gather, and analyze the
 amplitude-vs-thickness curve for tuning thickness and resolution limit. The
 composite plot is added in Task 2.
 """
+import os
+import tempfile
+
 import numpy as np
+import matplotlib.pyplot as plt
 
 from workflows.adapters import predict_layer, build_earth_model
 from tools.wedge_tools import create_wedge_model, analyze_wedge
@@ -27,6 +31,7 @@ def tuning(phit_sand, vclay_sand, phit_shale, vclay_shale, max_thickness,
         num_traces=num_traces, **earth,
     )
     analysis = analyze_wedge(synthetic, parameters)
+    image_path = plot_tuning(analysis, wavelet_freq)
 
     return {
         "sand": {"vp": sand.vp, "vs": sand.vs, "rho": sand.rho, "label": sand.label},
@@ -38,4 +43,31 @@ def tuning(phit_sand, vclay_sand, phit_shale, vclay_shale, max_thickness,
         "max_amplitudes": [float(a) for a in analysis["max_amplitudes"]],
         "wavelet_freq": float(wavelet_freq),
         "max_thickness": float(max_thickness),
+        "image_path": image_path,
     }
+
+
+def plot_tuning(analysis, wavelet_freq, output_path=None):
+    """Amplitude-vs-thickness curve with tuning-thickness and resolution-limit markers."""
+    if output_path is None:
+        fd, output_path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+    thicknesses = np.asarray(analysis["thicknesses"], dtype=float)
+    max_amplitudes = np.asarray(analysis["max_amplitudes"], dtype=float)
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.plot(thicknesses, max_amplitudes, "b-", label="Max amplitude")
+    ax.axvline(analysis["tuning_thickness"], color="r", ls="--",
+               label=f"Tuning thickness: {analysis['tuning_thickness']:.2f} m")
+    ax.axvline(analysis["resolution_limit"], color="g", ls="--",
+               label=f"Resolution limit: {analysis['resolution_limit']:.2f} m")
+    ax.set_xlabel("Thickness (m)")
+    ax.set_ylabel("Maximum amplitude")
+    ax.set_title(f"Wedge tuning curve ({wavelet_freq:g} Hz)")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
