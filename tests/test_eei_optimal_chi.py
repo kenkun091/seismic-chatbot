@@ -68,3 +68,22 @@ def test_scan_nonphysical_sample_raises():
     vs[0] = vp[0] + 1.0   # vs >= vp -> non-physical
     with pytest.raises(ValueError):
         _eei_chi_scan(vp, vs, rho, vp * rho, np.arange(-90.0, 91.0, 1.0))
+
+
+import os
+
+from tools.avo_tools import eei_optimal_chi
+
+
+def test_eei_optimal_chi_tool_ai_target():
+    vp, vs, rho = _logs(seed=1)
+    res = eei_optimal_chi(
+        vp.tolist(), vs.tolist(), rho.tolist(), (vp * rho).tolist(),
+        chi_min=-90, chi_max=90, chi_step=1,
+    )
+    assert abs(res["optimal_chi"]) <= 1.0
+    assert np.isclose(abs(res["max_correlation"]), 1.0, atol=1e-6)
+    path = res["image_path"]
+    assert isinstance(path, str) and path.endswith(".png")
+    assert os.path.getsize(path) > 0
+    os.remove(path)

@@ -1,4 +1,6 @@
 # Tools for AVO analysis
+import os
+import tempfile
 import warnings
 
 import numpy as np
@@ -373,3 +375,44 @@ def _eei_chi_scan(vp, vs, rho, target, chi, k=None):
         "max_correlation": float(corr[best]),
         "eei_optimal": [float(v) for v in eei[:, best]],
     }
+
+
+def plot_eei_chi_scan(chi, correlation, optimal_chi, output_path=None):
+    """Plot Pearson correlation vs rotation angle chi, marking the optimal chi."""
+    if output_path is None:
+        fd, output_path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+    chi = np.asarray(chi, dtype=float)
+    correlation = np.asarray(correlation, dtype=float)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(chi, correlation, "b-", linewidth=2, label="Pearson r(χ)")
+    ax.axhline(0.0, color="grey", lw=0.8, ls="--")
+    ax.axvline(optimal_chi, color="r", lw=1.2, ls="--",
+               label=f"χ* = {optimal_chi:.1f}°")
+    ax.set_xlabel("Rotation angle χ (degrees)")
+    ax.set_ylabel("Correlation with target")
+    ax.set_title("EEI–target correlation vs χ")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
+
+def eei_optimal_chi(vp, vs, rho, target, chi_min=-90.0, chi_max=90.0,
+                    chi_step=1.0, k=None):
+    """Find the EEI rotation angle chi best correlated with a target log (raw-logs mode).
+
+    Sweeps chi in [chi_min, chi_max] (step chi_step), correlates EEI(chi) against the
+    target log, and returns chi*, the correlation curve, the EEI log at chi*, and a
+    correlation-vs-chi plot path.
+    """
+    chi = np.arange(chi_min, chi_max + chi_step, chi_step)
+    result = _eei_chi_scan(vp, vs, rho, target, chi, k=k)
+    result["image_path"] = plot_eei_chi_scan(
+        result["chi"], result["correlation"], result["optimal_chi"]
+    )
+    return result
