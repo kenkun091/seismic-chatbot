@@ -97,6 +97,11 @@ def test_build_earth_model_feeds_create_wedge_model():
 from workflows.adapters import layer_from_gassmann
 
 
+def test_reduce_out_of_range_index_raises_value_error():
+    with pytest.raises(ValueError):
+        _reduce([1.0, 2.0], reduce=5)
+
+
 def test_layer_from_gassmann_brine_to_gas():
     # Shear modulus is fluid-independent: gas LOWERS Vp and RAISES Vs (lower density),
     # and lowers bulk density. Result must be a scalar Layer (G2 + G3).

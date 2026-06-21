@@ -57,3 +57,21 @@ def test_tuning_returns_image_path():
     assert isinstance(path, str) and path.endswith(".png")
     assert os.path.getsize(path) > 0
     os.remove(path)
+
+
+def test_tuning_zero_max_thickness_raises():
+    with pytest.raises(ValueError):
+        tuning(
+            phit_sand=0.25, vclay_sand=0.15,
+            phit_shale=0.10, vclay_shale=0.30,
+            max_thickness=0,
+        )
+
+
+def test_tuning_num_traces_one_raises():
+    with pytest.raises(ValueError):
+        tuning(
+            phit_sand=0.25, vclay_sand=0.15,
+            phit_shale=0.10, vclay_shale=0.30,
+            max_thickness=50, num_traces=1,
+        )

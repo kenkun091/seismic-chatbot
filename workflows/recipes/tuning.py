@@ -22,6 +22,10 @@ def tuning(phit_sand, vclay_sand, phit_shale, vclay_shale, max_thickness,
     Returns a JSON-friendly dict with the sand/shale layers, the tuning thickness,
     tuning amplitude, resolution limit, and the amplitude-vs-thickness curve.
     """
+    if max_thickness <= 0:
+        raise ValueError(f"max_thickness must be positive (got {max_thickness})")
+    if num_traces < 2:
+        raise ValueError(f"num_traces must be at least 2 (got {num_traces})")
     sand = predict_layer(phit_sand, vclay_sand, fluid=fluid_sand, label="sand")
     shale = predict_layer(phit_shale, vclay_shale, fluid="water", label="shale")
     earth = build_earth_model([shale, sand, shale])

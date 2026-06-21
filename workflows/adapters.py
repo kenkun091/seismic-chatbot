@@ -30,6 +30,8 @@ def _reduce(values, reduce="mean"):
     if reduce == "median":
         return float(np.median(arr))
     if isinstance(reduce, int) and not isinstance(reduce, bool):
+        if reduce < -arr.size or reduce >= arr.size:
+            raise ValueError(f"reduce index {reduce} out of range for length {arr.size}")
         return float(arr[reduce])
     raise ValueError(f"unknown reduce mode: {reduce!r}")
 
