@@ -43,3 +43,49 @@ def test_effective_fluid_guards():
         _effective_fluid(0.5, K_W, RHO_W, K_G, RHO_G, law="x")  # bad law
     with pytest.raises(ValueError):
         _effective_fluid(0.5, -1.0, RHO_W, K_G, RHO_G)         # non-positive modulus
+
+
+from tools.rock_physics_tools import rock_properties_saturation, calculate_rock_properties
+
+
+def test_saturation_endpoint_sw1_matches_water():
+    phit, vclay = 0.25, 0.20
+    sat = rock_properties_saturation(phit, vclay, sw=1.0, hydrocarbon="gas")
+    water = calculate_rock_properties(phit, vclay, "water", print_results=False)
+    assert np.allclose(sat, water)
+
+
+def test_saturation_endpoint_sw0_matches_gas():
+    phit, vclay = 0.25, 0.20
+    sat = rock_properties_saturation(phit, vclay, sw=0.0, hydrocarbon="gas")
+    gas = calculate_rock_properties(phit, vclay, "gas", print_results=False)
+    assert np.allclose(sat, gas)
+
+
+def test_saturation_reuss_vp_below_brie():
+    # Reuss is the lower bound: at equal Sw the density mix is identical, so the
+    # smaller Reuss K_fl gives a strictly lower Vp than Brie. (The full Vp-Sw curve
+    # is NOT monotone vs the gas end-member because density rises with Sw, so only
+    # this equal-Sw bound is asserted.)
+    phit, vclay = 0.25, 0.20
+    vp_r = rock_properties_saturation(phit, vclay, sw=0.5, law="reuss")[0]
+    vp_b = rock_properties_saturation(phit, vclay, sw=0.5, law="brie")[0]
+    assert vp_r < vp_b
+
+
+def test_saturation_shape_preserving():
+    phit = np.array([0.20, 0.25, 0.30])
+    vclay = np.array([0.10, 0.20, 0.30])
+    sw = np.array([0.2, 0.5, 0.8])
+    vp, vs, rhob, vp_vs, ai, si = rock_properties_saturation(phit, vclay, sw)
+    for arr in (vp, vs, rhob, vp_vs, ai, si):
+        assert np.asarray(arr).shape == phit.shape
+
+
+def test_saturation_guards():
+    with pytest.raises(ValueError):
+        rock_properties_saturation(0.25, 0.20, sw=1.2)               # sw out of range
+    with pytest.raises(ValueError):
+        rock_properties_saturation(0.25, 0.20, sw=0.5, hydrocarbon="water")  # not a HC
+    with pytest.raises(ValueError):
+        rock_properties_saturation(0.25, 0.20, sw=0.5, law="bogus")  # bad law

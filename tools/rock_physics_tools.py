@@ -409,3 +409,71 @@ def _effective_fluid(sw, k_w, rho_w, k_hc, rho_hc, law="reuss", brie_exponent=3.
     else:  # brie
         k_fl = (k_w - k_hc) * (sw ** float(brie_exponent)) + k_hc
     return k_fl, rho_fl
+
+def rock_properties_saturation(phit, vclay, sw, hydrocarbon="gas",
+                               law="reuss", brie_exponent=3.0, print_results=False):
+    """Vp, Vs, density, Vp/Vs, AI, SI at a continuous water saturation Sw.
+
+    Predicts the Han-1986 water-saturated frame (via calculate_rock_properties),
+    then Gassmann-substitutes the effective brine+hydrocarbon fluid at saturation
+    `sw` (Reuss or Brie mixing). Returns the same 6-tuple as
+    calculate_rock_properties. `calculate_rock_properties` itself is unchanged.
+    """
+    hc = str(hydrocarbon).lower()
+    if hc not in ("oil", "gas"):
+        raise ValueError(f"hydrocarbon must be 'oil' or 'gas' (got {hydrocarbon!r})")
+    if law not in ("reuss", "brie"):
+        raise ValueError(f"law must be 'reuss' or 'brie' (got {law!r})")
+
+    phit = np.asarray(phit, dtype=float)
+    vclay = np.asarray(vclay, dtype=float)
+    sw = np.asarray(sw, dtype=float)
+    if np.any(sw < 0) or np.any(sw > 1):
+        raise ValueError("sw (water saturation) must be within [0, 1]")
+
+    # Water-saturated frame (reuses the Han regressions + internal clipping; DRY).
+    vp_w, vs_w, rhob_w, *_ = calculate_rock_properties(
+        phit, vclay, "water", print_results=False
+    )
+    # Recompute the only quantities calculate_rock_properties does not return:
+    # mineral modulus K0 (Voigt-Reuss-Hill of quartz/clay) from clipped vclay, and
+    # the matrix density (recoverable from rhob_w with rho_fl_water = 1.0 g/cc).
+    vclay_c = np.clip(vclay, 0.0, 0.5)
+    phit_c = np.clip(phit, 0.0, 0.35)
+    k0_voigt = (1 - vclay_c) * _K_QUARTZ + vclay_c * _K_CLAY
+    k0_reuss = 1.0 / ((1 - vclay_c) / _K_QUARTZ + vclay_c / _K_CLAY)
+    K0 = 0.5 * (k0_voigt + k0_reuss)
+    rho_matrix = (rhob_w - 1.0 * phit_c) / (1.0 - phit_c)  # g/cc
+
+    rho_w_si = rhob_w * 1000.0
+    mu = rho_w_si * vs_w ** 2                              # Pa, fluid-independent
+    K_sat_w = rho_w_si * vp_w ** 2 - (4.0 / 3.0) * mu     # Pa
+
+    K_fl_w, rho_fl_w = _FLUIDS["water"]                   # (2.2e9 Pa, 1.0 g/cc)
+    K_hc, rho_hc = _FLUIDS[hc]
+    K_fl_eff, rho_fl_eff = _effective_fluid(
+        sw, K_fl_w, rho_fl_w, K_hc, rho_hc, law=law, brie_exponent=brie_exponent
+    )
+
+    K_dry = gassmann_dry(K_sat_w, K0, K_fl_w, phit_c)
+    K_sat_t = gassmann_sat(K_dry, K0, K_fl_eff, phit_c)
+    rhob = rho_matrix * (1.0 - phit_c) + rho_fl_eff * phit_c   # g/cc
+    rho_t_si = rhob * 1000.0
+    vp = np.sqrt((K_sat_t + (4.0 / 3.0) * mu) / rho_t_si)
+    vs = np.sqrt(mu / rho_t_si)
+    vp_vs_ratio = vp / vs
+
+    rho_kg_m3 = rhob * 1000.0
+    ai = rho_kg_m3 * vp / 1e6
+    si = rho_kg_m3 * vs / 1e6
+
+    if print_results:
+        print("\n=== Rock Properties at Saturation ===")
+        print(f"  Sw: {_format_value(sw, 2)}  HC: {hc}  law: {law}")
+        print(f"  Vp:  {_format_value(vp, 0)} m/s")
+        print(f"  Vs:  {_format_value(vs, 0)} m/s")
+        print(f"  Rho: {_format_value(rhob, 3)} g/cc")
+        print(f"  Vp/Vs: {_format_value(vp_vs_ratio, 2)}")
+        print("=" * 38)
+
+    return vp, vs, rhob, vp_vs_ratio, ai, si
