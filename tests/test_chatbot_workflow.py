@@ -47,3 +47,9 @@ def test_system_prompt_lists_eei_optimal_chi(bot):
     prompt = bot._create_system_prompt()
     assert "- eei_optimal_chi:" in prompt
     assert "- eei_optimal_chi_petro:" in prompt
+
+
+def test_system_prompt_lists_saturation(bot):
+    prompt = bot._create_system_prompt()
+    assert "- rock_properties_saturation:" in prompt
+    assert "- saturation_sweep:" in prompt

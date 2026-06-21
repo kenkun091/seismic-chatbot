@@ -82,6 +82,8 @@ Available tools:
 - tuning: Wedge tuning / vertical-resolution analysis — predicts a sand & encasing shale from porosity/clay, builds a sand wedge, and returns the tuning thickness, resolution limit, and amplitude-vs-thickness curve with a plot.
 - eei_optimal_chi: Finds the Extended Elastic Impedance rotation angle χ whose EEI log best correlates with a target property log (Vp, Vs, density, and target supplied as logs); returns the optimal χ, the correlation-vs-χ curve, and a plot.
 - eei_optimal_chi_petro: EEI optimal-χ from petrophysics — predicts Vp/Vs/density logs from porosity & clay-volume logs, then finds the χ whose EEI best correlates with Vclay (lithology) or porosity, with a plot.
+- rock_properties_saturation: Computes Vp, Vs, density, Vp/Vs and impedances at a continuous water saturation Sw from porosity and clay volume, via Gassmann substitution with a Reuss (uniform) or Brie (patchy) brine+hydrocarbon fluid mix.
+- saturation_sweep: Sweeps water saturation Sw for one rock (porosity & clay volume) and plots the Vp/Vs/AI saturation curves (the fluid line) under Reuss or Brie mixing — useful for fluid-feasibility / DHI sensitivity.
 
 Guidelines:
 1. Be helpful and concise in your responses
