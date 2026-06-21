@@ -39,9 +39,9 @@ EXAMPLE_PROMPTS = {
             "description": "Generate a standard Ricker wavelet"
         },
         {
-            "title": "Create 50 Hz Ricker",
-            "prompt": "Create a 50 Hz Ricker wavelet with 0.001s sampling",
-            "description": "Generate a higher frequency wavelet with specific sampling"
+            "title": "Create Ormsby wavelet",
+            "prompt": "Create an Ormsby bandpass wavelet with corner frequencies f1=5, f2=10, f3=40, f4=60 Hz",
+            "description": "Generate a bandpass Ormsby wavelet from four corner frequencies"
         },
         {
             "title": "Plot wavelet spectrum",
@@ -72,29 +72,9 @@ EXAMPLE_PROMPTS = {
             "description": "Model angle-dependent reflectivity at 15 degrees"
         },
         {
-            "title": "Gas sand AVO wedge",
-            "prompt": "Create a wedge model for gas sand using Shuey approximation with incident angle=20, v1=2200, v2=1800, v3=2400, vs1=1100, vs2=900, vs3=1200, rho1=2.2, rho2=1.9, rho3=2.3",
-            "description": "Model gas sand with angle-dependent reflectivity"
-        },
-        {
-            "title": "Wedge model with incident angle 30 degrees",
-            "prompt": "Make a wedge model with incident angle 30 degrees, v1=2000, v2=2500, v3=3000, rho1=2.1, rho2=2.3, rho3=2.5",
-            "description": "Create wedge model with specific incident angle"
-        },
-        {
-            "title": "Oil sand wedge at 25 degrees",
-            "prompt": "Create an oil sand wedge model with angle 25 degrees, velocities [2200, 2000, 2400], densities [2.2, 2.0, 2.3], max_thickness=120",
-            "description": "Model oil sand with angle-dependent reflectivity"
-        },
-        {
-            "title": "High angle wedge model",
-            "prompt": "Generate a wedge model with incident angle=45 degrees for v1=1800, v2=2200, v3=2600, rho1=1.9, rho2=2.2, rho3=2.4",
-            "description": "Model with high incident angle for AVO analysis"
-        },
-        {
-            "title": "Multiple angle wedge comparison",
-            "prompt": "Create wedge models with incident angles [0, 15, 30] degrees for v1=2000, v2=2500, v3=3000, rho1=2.1, rho2=2.3, rho3=2.5",
-            "description": "Compare wedge models at different incident angles"
+            "title": "Wedge AVO angle gather",
+            "prompt": "Build a wedge AVO angle gather over angles [0, 10, 20, 30, 40] with max_thickness=60, v1=2000, v2=2500, v3=3000, vs1=1000, vs2=1200, vs3=1500, rho1=2.1, rho2=2.3, rho3=2.5",
+            "description": "Model a true per-angle wedge gather (one synthetic panel per incidence angle)"
         }
     ],
     
@@ -110,9 +90,9 @@ EXAMPLE_PROMPTS = {
             "description": "Calculate reflectivity using Shuey's approximation"
         },
         {
-            "title": "Plot AVO curves",
-            "prompt": "Plot AVO reflectivity for angles=[0,5,10,15,20,25,30], rc=[0.1,0.08,0.05,0.02,-0.01,-0.03,-0.05]",
-            "description": "Visualize AVO curves"
+            "title": "AVO attributes & class",
+            "prompt": "Compute the AVO intercept, gradient, and class for an interface with vp1=2500, vs1=1200, rho1=2.3, vp2=2200, vs2=1300, rho2=2.0",
+            "description": "Get the intercept (A), gradient (B), and AVO class with the A-B crossplot"
         },
         {
             "title": "Gas sand AVO",
@@ -133,24 +113,24 @@ EXAMPLE_PROMPTS = {
             "description": "Model gas sand elastic properties"
         },
         {
-            "title": "Oil sand properties",
-            "prompt": "Calculate Vp, Vs, and density for porosity=0.18, clay_volume=0.25, fluid_type='oil'",
-            "description": "Model oil sand elastic properties"
-        },
-        {
             "title": "Plot rock properties",
             "prompt": "Calculate and plot rock properties for porosity range [0.1, 0.3] and clay volume [0.1, 0.5] with water saturation",
             "description": "Visualize how rock properties vary with porosity and clay content"
         },
         {
-            "title": "Shale properties",
-            "prompt": "Calculate elastic properties for high clay content: porosity=0.12, clay_volume=0.8, fluid_type='water'",
-            "description": "Model shale rock properties"
+            "title": "Gassmann fluid substitution",
+            "prompt": "Run Gassmann fluid substitution from brine to gas for vp=2800, vs=1500, rho=2.2, porosity=0.25",
+            "description": "Substitute the pore fluid and get the new Vp, Vs, and density"
         },
         {
-            "title": "Sandstone properties",
-            "prompt": "Calculate Vp, Vs, and density for clean sandstone: porosity=0.22, clay_volume=0.05, fluid_type='water'",
-            "description": "Model clean sandstone properties"
+            "title": "Saturation sweep",
+            "prompt": "Calculate Vp, Vs and Vp/Vs across water saturation [0, 0.2, 0.4, 0.6, 0.8, 1.0] for porosity=0.25, clay_volume=0.15 with a gas hydrocarbon",
+            "description": "Model elastic properties along a fluid-saturation line"
+        },
+        {
+            "title": "Predict layer from logs",
+            "prompt": "Predict the representative Vp, Vs and density of a sand from porosity log [0.22, 0.25, 0.2, 0.27] and clay log [0.1, 0.15, 0.08, 0.12], gas-filled",
+            "description": "Reduce porosity/clay logs to one representative elastic layer (Han 1986)"
         },
         {
             "title": "Rock physics RAG query",
@@ -169,21 +149,31 @@ EXAMPLE_PROMPTS = {
         }
     ],
     
-    "Advanced Topics": [
+    "Workflows & Advanced Analysis": [
         {
-            "title": "Tuning analysis",
-            "prompt": "Create a wedge model and analyze the tuning thickness for a 30 Hz wavelet",
-            "description": "Analyze tuning effects in seismic data"
+            "title": "Petro-to-AVO feasibility",
+            "prompt": "Run a petro-to-AVO feasibility for a gas sand with porosity 0.25 and clay volume 0.15 below a shale with porosity 0.1 and clay volume 0.6, over angles [0, 10, 20, 30, 40]",
+            "description": "End-to-end workflow: predict elastic properties, build the interface, and model the AVO curve + attributes"
         },
         {
-            "title": "Resolution limits",
-            "prompt": "What are the resolution limits for a 25 Hz wavelet and how do they affect interpretation?",
-            "description": "Understand seismic resolution limitations"
+            "title": "Fluid scenario comparison",
+            "prompt": "Compare the AVO response of a sand (porosity 0.25, clay 0.15) under a shale (porosity 0.1, clay 0.6) for brine vs gas across angles [0, 10, 20, 30, 40]",
+            "description": "Gassmann fluid-substitution scenarios overlaid for DHI / fluid feasibility"
         },
         {
-            "title": "AVO classification",
-            "prompt": "How do you classify AVO responses and what do different classes indicate?",
-            "description": "Learn about AVO classification schemes"
+            "title": "Wedge tuning from petrophysics",
+            "prompt": "Analyze wedge tuning for a sand (porosity 0.25, clay 0.15) encased in shale (porosity 0.1, clay 0.6) with 60 m max thickness and a 30 Hz wavelet",
+            "description": "Predict the layers, build the wedge, and find the tuning thickness and resolution limit"
+        },
+        {
+            "title": "EEI optimal rotation angle",
+            "prompt": "Find the EEI rotation angle that best correlates with clay volume for porosity log [0.2, 0.25, 0.18, 0.3] and clay log [0.4, 0.2, 0.6, 0.1]",
+            "description": "Extended Elastic Impedance: scan chi for the best lithology/porosity/Sw discriminator"
+        },
+        {
+            "title": "Parameter sweep / sensitivity",
+            "prompt": "Sweep the petro_to_avo gradient over sand porosity [0.1, 0.2, 0.3] and fluid [brine, gas], holding the shale and angles [0, 10, 20, 30] fixed",
+            "description": "Run a recipe across a parameter grid and summarize how an output responds"
         }
     ]
 }
