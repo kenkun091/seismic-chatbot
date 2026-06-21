@@ -11,7 +11,7 @@ from typing import Callable, Optional
 from tools.ricker_tools import create_ricker_wavelet, create_ormsby_wavelet, plot_wavelet
 from tools.wedge_tools import create_wedge_model, plot_wedge_model, analyze_wedge, wedge_avo_gather, plot_wedge_gather, analyze_wedge_gather
 from tools.avo_tools import zoeppritz_reflectivity, shuey_reflectivity, plot_avo_reflectivity, avo_attributes, plot_avo_crossplot, extended_elastic_impedance, plot_extended_elastic_impedance, eei_optimal_chi
-from tools.rock_physics_tools import calculate_rock_properties, rock_physics_rag, gassmann_substitution
+from tools.rock_physics_tools import calculate_rock_properties, rock_physics_rag, gassmann_substitution, rock_properties_saturation
 from tools.rag_tools import knowledge_rag
 from workflows.adapters import predict_elastic_layer
 from workflows.engine import WORKFLOW_REGISTRY
@@ -429,6 +429,22 @@ REGISTRY = [
         },
         required=["phit", "vclay"],
         defaults={"fluid_type": "water"},
+    ),
+    ToolSpec(
+        name="rock_properties_saturation",
+        fn=rock_properties_saturation,
+        description="Calculates Vp, Vs, density, Vp/Vs, acoustic and shear impedance at a continuous water saturation (Sw) from porosity and clay volume. Predicts the water-saturated frame (Han 1986) and applies Gassmann substitution with an effective brine+hydrocarbon pore fluid mixed by the Reuss/Wood (uniform) or Brie (patchy) law. Returns the six values (no plot).",
+        params={
+            "phit": {"type": "array", "items": {"type": "number"}, "description": "Porosity values (fraction, 0-1)."},
+            "vclay": {"type": "array", "items": {"type": "number"}, "description": "Clay volume values (fraction, 0-1)."},
+            "sw": {"type": "array", "items": {"type": "number"}, "description": "Water saturation (fraction, 0-1)."},
+            "hydrocarbon": {"type": "string", "description": "Hydrocarbon end-member: 'gas' (default) or 'oil'."},
+            "law": {"type": "string", "description": "Fluid-mixing law: 'reuss' (uniform/Wood, default) or 'brie' (patchy)."},
+            "brie_exponent": {"type": "number", "description": "Brie exponent e (default 3); used only when law='brie'."},
+        },
+        required=["phit", "vclay", "sw"],
+        defaults={"hydrocarbon": "gas", "law": "reuss", "brie_exponent": 3.0},
+        auto_plot=None,
     ),
     ToolSpec(
         name="gassmann_substitution",
