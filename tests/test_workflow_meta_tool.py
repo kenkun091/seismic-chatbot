@@ -68,3 +68,16 @@ def test_eei_optimal_chi_petro_runs_through_tool_manager():
     res = tm.execute_tool("eei_optimal_chi_petro", {"phit": phit, "vclay": vclay})
     assert res["target"] == "vclay"  # default
     assert isinstance(res["image_path"], str) and res["image_path"].endswith(".png")
+
+
+def test_saturation_sweep_is_registered_meta_tool():
+    assert "saturation_sweep" in reg.REGISTRY_BY_NAME
+    assert "saturation_sweep" in reg.TOOL_FUNCTIONS
+    assert {t["name"] for t in reg.TOOL_SCHEMAS} >= {"saturation_sweep"}
+
+
+def test_saturation_sweep_runs_through_tool_manager():
+    tm = ToolManager()
+    res = tm.execute_tool("saturation_sweep", {"phit": 0.25, "vclay": 0.20})
+    assert res["law"] == "reuss"  # default
+    assert isinstance(res["image_path"], str) and res["image_path"].endswith(".png")

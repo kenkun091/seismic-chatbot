@@ -13,6 +13,7 @@ from workflows.recipes.petro_to_avo import petro_to_avo
 from workflows.recipes.fluid_scenario import fluid_scenario
 from workflows.recipes.tuning import tuning
 from workflows.recipes.eei_optimal_chi_petro import eei_optimal_chi_petro
+from workflows.recipes.saturation_sweep import saturation_sweep
 
 
 @dataclass(frozen=True)
@@ -123,6 +124,28 @@ WORKFLOW_REGISTRY = [
         },
         required=["phit", "vclay"],
         defaults={"target": "vclay", "fluid": "brine", "chi_min": -90.0, "chi_max": 90.0, "chi_step": 1.0},
+        auto_plot=None,
+    ),
+    WorkflowSpec(
+        name="saturation_sweep",
+        fn=saturation_sweep,
+        description=(
+            "Saturation (fluid-line) analysis: for a single rock described by porosity "
+            "and clay volume, compute Vp, Vs, acoustic impedance and Vp/Vs across a range "
+            "of water saturations Sw, using an effective brine+hydrocarbon pore fluid "
+            "mixed by the Reuss/Wood (uniform) or Brie (patchy) law. Returns the "
+            "saturation curves and a plot. Useful for fluid feasibility / DHI sensitivity."
+        ),
+        params={
+            "phit": {"type": "number", "description": "Porosity (fraction, 0-1)."},
+            "vclay": {"type": "number", "description": "Clay volume (fraction, 0-1)."},
+            "hydrocarbon": {"type": "string", "description": "Hydrocarbon end-member: 'gas' (default) or 'oil'."},
+            "law": {"type": "string", "description": "Fluid-mixing law: 'reuss' (uniform/Wood, default) or 'brie' (patchy)."},
+            "sw_values": {"type": "array", "items": {"type": "number"}, "description": "Water saturations to sweep (default 0 to 1 in 21 steps)."},
+            "brie_exponent": {"type": "number", "description": "Brie exponent e (default 3); used only when law='brie'."},
+        },
+        required=["phit", "vclay"],
+        defaults={"hydrocarbon": "gas", "law": "reuss", "sw_values": None, "brie_exponent": 3.0},
         auto_plot=None,
     ),
 ]
