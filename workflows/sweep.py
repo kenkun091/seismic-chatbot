@@ -37,3 +37,29 @@ def _expand_grid(grid, fixed=None):
         combo.update(dict(zip(keys, values)))
         combos.append(combo)
     return combos
+
+
+def _is_number(x):
+    """True for real numeric scalars, excluding bool (bool is treated categorically)."""
+    return isinstance(x, (int, float, np.integer, np.floating)) and not isinstance(x, bool)
+
+
+def _summarize(values):
+    """Summarize swept metric values (numeric stats or categorical counts)."""
+    present = [v for v in values if v is not None]
+    if not present:
+        return {"kind": "empty", "count": 0}
+    if all(_is_number(v) for v in present):
+        arr = np.asarray([float(v) for v in present], dtype=float)
+        return {
+            "kind": "numeric",
+            "count": int(arr.size),
+            "min": float(arr.min()),
+            "max": float(arr.max()),
+            "mean": float(arr.mean()),
+            "std": float(arr.std()),
+        }
+    counts = {}
+    for v in present:
+        counts[v] = counts.get(v, 0) + 1
+    return {"kind": "categorical", "count": len(present), "counts": counts}
