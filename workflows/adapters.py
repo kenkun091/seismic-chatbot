@@ -12,6 +12,7 @@ The leaf tools themselves are not modified.
 import numpy as np
 
 from tools.rock_physics_tools import calculate_rock_properties, gassmann_substitution
+from tools.rock_physics_tools import rock_properties_saturation
 from tools.physics_guards import require_elastic_medium
 from workflows.types import Layer
 
@@ -33,11 +34,26 @@ def _reduce(values, reduce="mean"):
     raise ValueError(f"unknown reduce mode: {reduce!r}")
 
 
-def predict_layer(phit, vclay, fluid="water", *, reduce="mean", label=""):
-    """Predict a representative elastic `Layer` from porosity + clay volume (G2 + G3)."""
-    vp, vs, rho, *_ = calculate_rock_properties(
-        phit, vclay, fluid_type=fluid, print_results=False
-    )
+def predict_layer(phit, vclay, fluid="water", *, reduce="mean", label="",
+                  sw=None, law="reuss", brie_exponent=3.0):
+    """Predict a representative elastic `Layer` from porosity + clay volume (G2 + G3).
+
+    When `sw` is given, `fluid` names the hydrocarbon end-member (must be 'oil' or
+    'gas') and the layer is predicted at that water saturation via Reuss/Brie fluid
+    mixing; otherwise the discrete `fluid` string is used as before.
+    """
+    if sw is None:
+        vp, vs, rho, *_ = calculate_rock_properties(
+            phit, vclay, fluid_type=fluid, print_results=False
+        )
+    else:
+        if str(fluid).lower() not in ("oil", "gas"):
+            raise ValueError(
+                "when sw is given, fluid must name the hydrocarbon ('oil' or 'gas')"
+            )
+        vp, vs, rho, *_ = rock_properties_saturation(
+            phit, vclay, sw, hydrocarbon=fluid, law=law, brie_exponent=brie_exponent
+        )
     layer = Layer(
         vp=_reduce(vp, reduce),
         vs=_reduce(vs, reduce),
