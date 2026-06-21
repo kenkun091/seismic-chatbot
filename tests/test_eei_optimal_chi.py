@@ -24,6 +24,22 @@ def test_scan_ai_target_recovers_chi_zero():
     assert len(res["eei_optimal"]) == len(vp)
 
 
+def test_scan_recovers_planted_chi():
+    # Build a target that IS the EEI log at a chosen chi (same scalar-K formula the
+    # scan uses). The scan must then peak exactly at that planted chi with |r| = 1.
+    vp, vs, rho = _logs(seed=7)
+    planted = 30.0
+    K = float(np.mean((vs / vp) ** 2))
+    x = np.radians(planted)
+    p = np.cos(x) + np.sin(x)
+    q = -8.0 * K * np.sin(x)
+    r = np.cos(x) - 4.0 * K * np.sin(x)
+    target = vp ** p * vs ** q * rho ** r
+    res = _eei_chi_scan(vp, vs, rho, target, np.arange(-90.0, 90.0 + 1.0, 1.0))
+    assert res["optimal_chi"] == planted
+    assert np.isclose(abs(res["max_correlation"]), 1.0, atol=1e-6)
+
+
 def test_scan_is_shift_scale_invariant():
     # Pearson r is invariant to affine transforms of the target -> same optimal chi.
     vp, vs, rho = _logs(seed=3)
