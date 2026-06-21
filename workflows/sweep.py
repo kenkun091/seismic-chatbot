@@ -63,3 +63,60 @@ def _summarize(values):
     for v in present:
         counts[v] = counts.get(v, 0) + 1
     return {"kind": "categorical", "count": len(present), "counts": counts}
+
+
+def run_sweep(recipe, grid, metric, fixed=None):
+    """Run `recipe` over the cartesian product of `grid`, collecting `metric` per cell.
+
+    Returns a results table, summary stats, and coverage. Per-cell recipe PNGs are
+    deleted. Cells whose recipe raises (or that lack `metric`) are recorded in
+    coverage.failures with value None; the sweep does not abort. Raises ValueError
+    for a self-sweep, an unknown recipe, a bad grid, or if every cell fails.
+    """
+    # Lazy import to avoid the engine<->sweep import cycle.
+    from workflows.engine import WorkflowEngine, WORKFLOW_NAMES
+
+    if recipe == "run_sweep":
+        raise ValueError("cannot sweep run_sweep itself")
+    if recipe not in WORKFLOW_NAMES:
+        raise ValueError(f"unknown recipe {recipe!r}; choose one of {sorted(WORKFLOW_NAMES)}")
+
+    swept_params = list(grid)
+    combos = _expand_grid(grid, fixed)
+    engine = WorkflowEngine()
+
+    rows = []
+    failures = []
+    for combo in combos:
+        swept_only = {k: combo[k] for k in swept_params}
+        try:
+            result = engine.run(recipe, combo)
+        except Exception as exc:  # a recipe raised -> record, do not abort
+            failures.append({"params": swept_only, "error": str(exc)})
+            rows.append({"params": swept_only, "value": None})
+            continue
+        img = result.get("image_path")
+        if isinstance(img, str) and os.path.exists(img):
+            os.remove(img)
+        if metric not in result:
+            failures.append({"params": swept_only,
+                             "error": f"metric {metric!r} not in result keys {sorted(result)}"})
+            rows.append({"params": swept_only, "value": None})
+            continue
+        rows.append({"params": swept_only, "value": result[metric]})
+
+    total = len(rows)
+    ran = sum(1 for r in rows if r["value"] is not None)
+    if ran == 0:
+        first = failures[0]["error"] if failures else "no cells produced a value"
+        raise ValueError(f"all {total} sweep cells failed; first error: {first}")
+
+    return {
+        "recipe": recipe,
+        "metric": metric,
+        "swept_params": swept_params,
+        "rows": rows,
+        "stats": _summarize([r["value"] for r in rows]),
+        "coverage": {"total": total, "ran": ran, "failed": total - ran,
+                     "failures": failures},
+    }

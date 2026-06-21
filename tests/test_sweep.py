@@ -62,3 +62,80 @@ def test_summarize_bool_is_categorical():
     s = _summarize([True, False, True])
     assert s["kind"] == "categorical"
     assert s["counts"] == {True: 2, False: 1}
+
+
+from workflows.sweep import run_sweep
+
+# Fixed params that make petro_to_avo run for any fluid_sand value.
+_PETRO_FIXED = {
+    "phit_sand": 0.25, "vclay_sand": 0.15,
+    "phit_shale": 0.10, "vclay_shale": 0.55,
+    "angles": [0, 10, 20, 30],
+}
+
+
+def test_run_sweep_1d_numeric_metric():
+    res = run_sweep("petro_to_avo", {"fluid_sand": ["brine", "gas"]},
+                    metric="gradient", fixed=_PETRO_FIXED)
+    assert res["recipe"] == "petro_to_avo"
+    assert res["metric"] == "gradient"
+    assert res["swept_params"] == ["fluid_sand"]
+    assert len(res["rows"]) == 2
+    assert all(isinstance(r["value"], float) for r in res["rows"])
+    assert res["coverage"] == {"total": 2, "ran": 2, "failed": 0, "failures": []}
+    assert res["stats"]["kind"] == "numeric"
+
+
+def test_run_sweep_2d_grid_cell_count():
+    res = run_sweep("petro_to_avo",
+                    {"phit_sand": [0.20, 0.30], "fluid_sand": ["brine", "gas"]},
+                    metric="gradient", fixed=_PETRO_FIXED)
+    assert len(res["rows"]) == 4
+    assert res["coverage"]["ran"] == 4
+
+
+def test_run_sweep_categorical_metric():
+    res = run_sweep("petro_to_avo", {"fluid_sand": ["brine", "gas"]},
+                    metric="avo_class", fixed=_PETRO_FIXED)
+    assert res["stats"]["kind"] == "categorical"
+    assert sum(res["stats"]["counts"].values()) == 2
+
+
+def test_run_sweep_records_failed_cell_without_aborting():
+    # phit_sand=1.5 is non-physical -> that cell raises; the brine/gas valid
+    # cells still run. (Grid value overrides the fixed phit_sand.)
+    res = run_sweep("petro_to_avo",
+                    {"phit_sand": [0.25, 1.5], "fluid_sand": ["gas"]},
+                    metric="gradient", fixed=_PETRO_FIXED)
+    assert res["coverage"]["total"] == 2
+    assert res["coverage"]["ran"] == 1
+    assert res["coverage"]["failed"] == 1
+    assert len(res["coverage"]["failures"]) == 1
+
+
+def test_run_sweep_rejects_self():
+    with pytest.raises(ValueError):
+        run_sweep("run_sweep", {"a": [1]}, metric="x")
+
+
+def test_run_sweep_rejects_unknown_recipe():
+    with pytest.raises(ValueError):
+        run_sweep("not_a_recipe", {"a": [1]}, metric="x")
+
+
+def test_run_sweep_all_cells_fail_raises():
+    # A bad metric makes every cell fail -> ValueError naming the problem.
+    with pytest.raises(ValueError):
+        run_sweep("petro_to_avo", {"fluid_sand": ["brine", "gas"]},
+                  metric="nonexistent_metric", fixed=_PETRO_FIXED)
+
+
+def test_run_sweep_cleans_up_cell_pngs(monkeypatch):
+    removed = []
+    real_remove = os.remove
+    monkeypatch.setattr("workflows.sweep.os.remove",
+                        lambda p: (removed.append(p), real_remove(p)))
+    run_sweep("petro_to_avo", {"fluid_sand": ["brine", "gas"]},
+              metric="gradient", fixed=_PETRO_FIXED)
+    # Two cells -> two per-cell PNGs deleted.
+    assert len([p for p in removed if p.endswith(".png")]) == 2
