@@ -23,7 +23,10 @@ def test_effective_density_is_linear():
 
 
 def test_reuss_below_brie_in_between():
-    # Reuss is the lower bound: K_fl(reuss) <= K_fl(brie) for 0 < Sw < 1.
+    # At Sw=0.5 (mid saturation) Reuss < Brie < K_w. NOTE: Reuss is the harmonic
+    # (Wood) lower bound, but Brie is an empirical patchy model, NOT a global upper
+    # bound on Reuss — for a strong brine/gas contrast Brie dips slightly below
+    # Reuss at low Sw (~0-0.17). The ordering asserted here holds at moderate Sw.
     kr, _ = _effective_fluid(0.5, K_W, RHO_W, K_G, RHO_G, law="reuss")
     kb, _ = _effective_fluid(0.5, K_W, RHO_W, K_G, RHO_G, law="brie")
     assert kr < kb < K_W
@@ -60,6 +63,13 @@ def test_saturation_endpoint_sw0_matches_gas():
     sat = rock_properties_saturation(phit, vclay, sw=0.0, hydrocarbon="gas")
     gas = calculate_rock_properties(phit, vclay, "gas", print_results=False)
     assert np.allclose(sat, gas)
+
+
+def test_saturation_endpoint_sw0_matches_oil():
+    phit, vclay = 0.25, 0.20
+    sat = rock_properties_saturation(phit, vclay, sw=0.0, hydrocarbon="oil")
+    oil = calculate_rock_properties(phit, vclay, "oil", print_results=False)
+    assert np.allclose(sat, oil)
 
 
 def test_saturation_reuss_vp_below_brie():

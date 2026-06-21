@@ -25,3 +25,10 @@ def test_saturation_sweep_vp_increases_with_sw():
 def test_saturation_sweep_rejects_bad_law():
     with pytest.raises(ValueError):
         saturation_sweep(0.25, 0.20, law="bogus")
+
+
+def test_saturation_sweep_brie_law_runs():
+    res = saturation_sweep(0.25, 0.20, law="brie", brie_exponent=3.0)
+    assert res["law"] == "brie"
+    assert len(res["vp"]) == len(res["sw"]) > 1
+    os.remove(res["image_path"])

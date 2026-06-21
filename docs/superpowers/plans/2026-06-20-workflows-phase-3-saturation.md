@@ -45,8 +45,11 @@ bulk moduli `K_w`, `K_hc` and densities `ρ_w`, `ρ_hc`:
   `K_fl = (K_w − K_hc) · Sw^e + K_hc`, with exponent `e ≈ 3` (default).
 
 Both laws satisfy the end-members exactly: at **Sw=1**, `K_fl = K_w` (brine); at **Sw=0**,
-`K_fl = K_hc` (hydrocarbon). For `0 < Sw < 1`, `K_fl(Reuss) ≤ K_fl(Brie)` (Reuss is the
-lower bound), so `Vp(Reuss) ≤ Vp(Brie)`.
+`K_fl = K_hc` (hydrocarbon). Reuss is the harmonic (Wood) lower bound; Brie is an
+empirical patchy model, **not** a global upper bound on Reuss — for a strong brine/gas
+contrast Brie's `Sw^e` curve dips slightly below Reuss at low Sw (~0–0.17). At moderate
+saturation (e.g. Sw=0.5) `K_fl(Reuss) < K_fl(Brie)`, so `Vp(Reuss) < Vp(Brie)` there;
+the tests assert this equal-Sw ordering at Sw=0.5, not a global bound.
 
 The partially-saturated rock is then obtained by Gassmann substitution from the
 Han-1986 water-saturated frame: invert to the dry frame with the brine fluid, then
