@@ -139,3 +139,29 @@ def test_run_sweep_cleans_up_cell_pngs(monkeypatch):
               metric="gradient", fixed=_PETRO_FIXED)
     # Two cells -> two per-cell PNGs deleted.
     assert len([p for p in removed if p.endswith(".png")]) == 2
+
+
+def _png_ok(path):
+    return isinstance(path, str) and path.endswith(".png") and os.path.getsize(path) > 0
+
+
+def test_run_sweep_adds_image_path_1d():
+    res = run_sweep("petro_to_avo", {"phit_sand": [0.15, 0.25, 0.35]},
+                    metric="gradient", fixed=_PETRO_FIXED)
+    assert _png_ok(res["image_path"])
+    os.remove(res["image_path"])
+
+
+def test_run_sweep_adds_image_path_2d_heatmap():
+    res = run_sweep("petro_to_avo",
+                    {"phit_sand": [0.15, 0.25], "vclay_sand": [0.10, 0.20]},
+                    metric="gradient", fixed=_PETRO_FIXED)
+    assert _png_ok(res["image_path"])
+    os.remove(res["image_path"])
+
+
+def test_run_sweep_adds_image_path_categorical():
+    res = run_sweep("petro_to_avo", {"fluid_sand": ["brine", "gas"]},
+                    metric="avo_class", fixed=_PETRO_FIXED)
+    assert _png_ok(res["image_path"])
+    os.remove(res["image_path"])

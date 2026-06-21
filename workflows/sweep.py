@@ -111,7 +111,7 @@ def run_sweep(recipe, grid, metric, fixed=None):
         first = failures[0]["error"] if failures else "no cells produced a value"
         raise ValueError(f"all {total} sweep cells failed; first error: {first}")
 
-    return {
+    out = {
         "recipe": recipe,
         "metric": metric,
         "swept_params": swept_params,
@@ -120,3 +120,73 @@ def run_sweep(recipe, grid, metric, fixed=None):
         "coverage": {"total": total, "ran": ran, "failed": total - ran,
                      "failures": failures},
     }
+    out["image_path"] = plot_sweep(out)
+    return out
+
+
+def _numeric_param_values(rows, key):
+    """Return the per-row float values of a swept param, or None if any is non-numeric."""
+    vals = [r["params"][key] for r in rows]
+    if all(_is_number(v) for v in vals):
+        return [float(v) for v in vals]
+    return None
+
+
+def plot_sweep(result, output_path=None):
+    """Aggregate plot for a sweep: line (1-D numeric), heatmap (2-D numeric),
+    histogram (other numeric), or bar of counts (categorical metric)."""
+    if output_path is None:
+        fd, output_path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+
+    rows = result["rows"]
+    metric = result["metric"]
+    swept = result["swept_params"]
+    numeric_metric = result["stats"]["kind"] == "numeric"
+
+    fig, ax = plt.subplots(figsize=(9, 6))
+
+    if not numeric_metric:
+        # Categorical metric: bar of value counts.
+        counts = result["stats"].get("counts", {})
+        labels = [str(k) for k in counts]
+        ax.bar(labels, [counts[k] for k in counts], color="C0")
+        ax.set_xlabel(metric)
+        ax.set_ylabel("Count")
+        ax.set_title(f"{result['recipe']}: {metric} distribution")
+    elif len(swept) == 1 and _numeric_param_values(rows, swept[0]) is not None:
+        x = _numeric_param_values(rows, swept[0])
+        y = [r["value"] if r["value"] is not None else np.nan for r in rows]
+        order = np.argsort(x)
+        ax.plot(np.asarray(x)[order], np.asarray(y, dtype=float)[order], "o-", color="C0")
+        ax.set_xlabel(swept[0])
+        ax.set_ylabel(metric)
+        ax.set_title(f"{result['recipe']}: {metric} vs {swept[0]}")
+        ax.grid(True, alpha=0.3)
+    elif (len(swept) == 2 and _numeric_param_values(rows, swept[0]) is not None
+          and _numeric_param_values(rows, swept[1]) is not None):
+        xs = sorted({r["params"][swept[0]] for r in rows})
+        ys = sorted({r["params"][swept[1]] for r in rows})
+        grid_z = np.full((len(ys), len(xs)), np.nan)
+        for r in rows:
+            i = ys.index(r["params"][swept[1]])
+            j = xs.index(r["params"][swept[0]])
+            grid_z[i, j] = r["value"] if r["value"] is not None else np.nan
+        im = ax.imshow(grid_z, origin="lower", aspect="auto",
+                       extent=[min(xs), max(xs), min(ys), max(ys)])
+        fig.colorbar(im, ax=ax, label=metric)
+        ax.set_xlabel(swept[0])
+        ax.set_ylabel(swept[1])
+        ax.set_title(f"{result['recipe']}: {metric}")
+    else:
+        # >2 swept dims or non-numeric params: distribution histogram.
+        vals = [r["value"] for r in rows if r["value"] is not None]
+        ax.hist(vals, bins=min(20, max(5, len(vals))), color="C0")
+        ax.set_xlabel(metric)
+        ax.set_ylabel("Count")
+        ax.set_title(f"{result['recipe']}: {metric} distribution ({len(swept)} params)")
+
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
