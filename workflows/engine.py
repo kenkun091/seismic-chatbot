@@ -14,6 +14,7 @@ from workflows.recipes.fluid_scenario import fluid_scenario
 from workflows.recipes.tuning import tuning
 from workflows.recipes.eei_optimal_chi_petro import eei_optimal_chi_petro
 from workflows.recipes.saturation_sweep import saturation_sweep
+from workflows.sweep import run_sweep
 
 
 @dataclass(frozen=True)
@@ -149,6 +150,29 @@ WORKFLOW_REGISTRY = [
         },
         required=["phit", "vclay"],
         defaults={"hydrocarbon": "gas", "law": "reuss", "sw_values": None, "brie_exponent": 3.0},
+        auto_plot=None,
+    ),
+    WorkflowSpec(
+        name="run_sweep",
+        fn=run_sweep,
+        description=(
+            "Parameter sweep / sensitivity analysis: run another workflow recipe over a "
+            "grid of parameter values (the cartesian product) and collect one scalar "
+            "result metric per run. Returns a results table, summary statistics "
+            "(min/max/mean/std for numeric metrics, or value counts for categorical ones "
+            "like AVO class), a coverage report (which cells ran or failed), and an "
+            "aggregate plot (a line for a 1-parameter sweep, a heatmap for two, a "
+            "histogram otherwise). Use it to test how an output responds across ranges of "
+            "porosity, clay volume, fluid, saturation, frequency, etc."
+        ),
+        params={
+            "recipe": {"type": "string", "description": "Name of the workflow recipe to sweep, e.g. 'petro_to_avo', 'fluid_scenario', 'tuning', or 'saturation_sweep'."},
+            "grid": {"type": "object", "description": "Swept parameters mapped to lists of values, e.g. {\"phit_sand\": [0.1, 0.2, 0.3], \"fluid_sand\": [\"brine\", \"gas\"]}. The cartesian product of these is run."},
+            "metric": {"type": "string", "description": "Name of the scalar field in the recipe's result to collect per run, e.g. 'gradient', 'intercept', 'avo_class', 'tuning_thickness', or 'resolution_limit'."},
+            "fixed": {"type": "object", "description": "Parameters held constant across every run (the recipe's other required/optional params)."},
+        },
+        required=["recipe", "grid", "metric"],
+        defaults={"fixed": None},
         auto_plot=None,
     ),
 ]

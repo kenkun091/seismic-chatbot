@@ -81,3 +81,23 @@ def test_saturation_sweep_runs_through_tool_manager():
     res = tm.execute_tool("saturation_sweep", {"phit": 0.25, "vclay": 0.20})
     assert res["law"] == "reuss"  # default
     assert isinstance(res["image_path"], str) and res["image_path"].endswith(".png")
+
+
+def test_run_sweep_is_registered_meta_tool():
+    assert "run_sweep" in reg.REGISTRY_BY_NAME
+    assert "run_sweep" in reg.TOOL_FUNCTIONS
+    assert {t["name"] for t in reg.TOOL_SCHEMAS} >= {"run_sweep"}
+
+
+def test_run_sweep_runs_through_tool_manager():
+    tm = ToolManager()
+    res = tm.execute_tool("run_sweep", {
+        "recipe": "petro_to_avo",
+        "grid": {"fluid_sand": ["brine", "gas"]},
+        "metric": "gradient",
+        "fixed": {"phit_sand": 0.25, "vclay_sand": 0.15,
+                  "phit_shale": 0.10, "vclay_shale": 0.55,
+                  "angles": [0, 10, 20, 30]},
+    })
+    assert res["coverage"]["ran"] == 2
+    assert isinstance(res["image_path"], str) and res["image_path"].endswith(".png")
