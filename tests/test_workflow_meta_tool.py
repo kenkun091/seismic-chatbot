@@ -51,3 +51,20 @@ def test_tuning_runs_through_tool_manager():
     })
     assert res["tuning_thickness"] > 0
     assert isinstance(res["image_path"], str) and res["image_path"].endswith(".png")
+
+
+def test_eei_optimal_chi_petro_is_registered_meta_tool():
+    assert "eei_optimal_chi_petro" in reg.REGISTRY_BY_NAME
+    assert "eei_optimal_chi_petro" in reg.TOOL_FUNCTIONS
+    assert {t["name"] for t in reg.TOOL_SCHEMAS} >= {"eei_optimal_chi_petro"}
+
+
+def test_eei_optimal_chi_petro_runs_through_tool_manager():
+    import numpy as np
+    n = 30
+    phit = list(0.10 + 0.002 * np.arange(n))
+    vclay = list(0.10 + 0.01 * np.arange(n))
+    tm = ToolManager()
+    res = tm.execute_tool("eei_optimal_chi_petro", {"phit": phit, "vclay": vclay})
+    assert res["target"] == "vclay"  # default
+    assert isinstance(res["image_path"], str) and res["image_path"].endswith(".png")

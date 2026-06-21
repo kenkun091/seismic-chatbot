@@ -12,6 +12,7 @@ from typing import Callable, Optional
 from workflows.recipes.petro_to_avo import petro_to_avo
 from workflows.recipes.fluid_scenario import fluid_scenario
 from workflows.recipes.tuning import tuning
+from workflows.recipes.eei_optimal_chi_petro import eei_optimal_chi_petro
 
 
 @dataclass(frozen=True)
@@ -99,6 +100,29 @@ WORKFLOW_REGISTRY = [
         },
         required=["phit_sand", "vclay_sand", "phit_shale", "vclay_shale", "max_thickness"],
         defaults={"wavelet_freq": 30.0, "num_traces": 61, "fluid_sand": "brine"},
+        auto_plot=None,
+    ),
+    WorkflowSpec(
+        name="eei_optimal_chi_petro",
+        fn=eei_optimal_chi_petro,
+        description=(
+            "EEI optimal-rotation-angle analysis from petrophysics: predict Vp/Vs/density "
+            "logs from porosity and clay-volume logs, then find the Extended Elastic "
+            "Impedance angle chi whose EEI log best correlates with a chosen target "
+            "(Vclay for lithology, or porosity). Returns the optimal chi, the "
+            "correlation-vs-chi curve, the EEI log at the optimal chi, and a plot."
+        ),
+        params={
+            "phit": {"type": "array", "items": {"type": "number"}, "description": "Porosity log (fraction, 0-1)."},
+            "vclay": {"type": "array", "items": {"type": "number"}, "description": "Clay-volume log (fraction, 0-1)."},
+            "target": {"type": "string", "description": "Target property to correlate against: 'vclay' (default) or 'phit'."},
+            "fluid": {"type": "string", "description": "Pore fluid for the rock-physics prediction: 'brine'/'water', 'oil', or 'gas' (default 'brine')."},
+            "chi_min": {"type": "number", "description": "Minimum rotation angle in degrees (default -90)."},
+            "chi_max": {"type": "number", "description": "Maximum rotation angle in degrees (default 90)."},
+            "chi_step": {"type": "number", "description": "Rotation-angle step in degrees (default 1)."},
+        },
+        required=["phit", "vclay"],
+        defaults={"target": "vclay", "fluid": "brine", "chi_min": -90.0, "chi_max": 90.0, "chi_step": 1.0},
         auto_plot=None,
     ),
 ]
