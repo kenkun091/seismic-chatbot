@@ -10,7 +10,7 @@ from typing import Callable, Optional
 
 from tools.ricker_tools import create_ricker_wavelet, create_ormsby_wavelet, plot_wavelet
 from tools.wedge_tools import create_wedge_model, plot_wedge_model, analyze_wedge, wedge_avo_gather, plot_wedge_gather, analyze_wedge_gather
-from tools.avo_tools import zoeppritz_reflectivity, shuey_reflectivity, plot_avo_reflectivity, avo_attributes, plot_avo_crossplot, extended_elastic_impedance, plot_extended_elastic_impedance
+from tools.avo_tools import zoeppritz_reflectivity, shuey_reflectivity, plot_avo_reflectivity, avo_attributes, plot_avo_crossplot, extended_elastic_impedance, plot_extended_elastic_impedance, eei_optimal_chi
 from tools.rock_physics_tools import calculate_rock_properties, rock_physics_rag, gassmann_substitution
 from tools.rag_tools import knowledge_rag
 from workflows.adapters import predict_elastic_layer
@@ -383,6 +383,25 @@ REGISTRY = [
         },
         required=["chi", "eei"],
         defaults={},
+    ),
+    ToolSpec(
+        name="eei_optimal_chi",
+        fn=eei_optimal_chi,
+        description="Finds the Extended Elastic Impedance rotation angle chi whose EEI log best correlates with a target property log (e.g. Vclay, Sw, porosity, or an acoustic-impedance log). Takes Vp, Vs, density, and target as equal-length logs; sweeps chi and returns the optimal chi, the correlation-vs-chi curve, the EEI log at the optimal chi, and a plot.",
+        params={
+            "vp": {"type": "array", "items": {"type": "number"}, "description": "P-wave velocity log in m/s."},
+            "vs": {"type": "array", "items": {"type": "number"}, "description": "S-wave velocity log in m/s."},
+            "rho": {"type": "array", "items": {"type": "number"}, "description": "Bulk density log in g/cm³."},
+            "target": {"type": "array", "items": {"type": "number"}, "description": "Target property log to correlate against (same length as the elastic logs)."},
+            "chi_min": {"type": "number", "description": "Minimum rotation angle in degrees (default -90)."},
+            "chi_max": {"type": "number", "description": "Maximum rotation angle in degrees (default 90)."},
+            "chi_step": {"type": "number", "description": "Rotation-angle step in degrees (default 1)."},
+            "k": {"type": "number", "description": "Optional background (Vs/Vp)² constant; default is the mean over the log."},
+        },
+        required=["vp", "vs", "rho", "target"],
+        defaults={"chi_min": -90.0, "chi_max": 90.0, "chi_step": 1.0},
+        validator=None,
+        auto_plot=None,
     ),
     ToolSpec(
         name="calculate_rock_properties",
