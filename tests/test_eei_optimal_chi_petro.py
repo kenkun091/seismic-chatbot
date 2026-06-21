@@ -37,3 +37,19 @@ def test_petro_recipe_rejects_bad_target():
     phit, vclay = _petro_logs()
     with pytest.raises(ValueError):
         eei_optimal_chi_petro(phit, vclay, target="bogus")
+
+
+def test_petro_recipe_sw_target():
+    phit, vclay = _petro_logs(seed=5)
+    n = len(phit)
+    sw = list(np.linspace(0.2, 0.9, n))
+    res = eei_optimal_chi_petro(phit, vclay, target="sw", sw=sw, hydrocarbon="gas")
+    assert res["target"] == "sw"
+    assert -90.0 <= res["optimal_chi"] <= 90.0
+    os.remove(res["image_path"])
+
+
+def test_petro_recipe_sw_target_requires_sw():
+    phit, vclay = _petro_logs()
+    with pytest.raises(ValueError):
+        eei_optimal_chi_petro(phit, vclay, target="sw")  # sw missing

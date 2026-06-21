@@ -110,20 +110,23 @@ WORKFLOW_REGISTRY = [
             "EEI optimal-rotation-angle analysis from petrophysics: predict Vp/Vs/density "
             "logs from porosity and clay-volume logs, then find the Extended Elastic "
             "Impedance angle chi whose EEI log best correlates with a chosen target "
-            "(Vclay for lithology, or porosity). Returns the optimal chi, the "
-            "correlation-vs-chi curve, the EEI log at the optimal chi, and a plot."
+            "(Vclay for lithology, porosity, or water saturation Sw). Returns the optimal "
+            "chi, the correlation-vs-chi curve, the EEI log at the optimal chi, and a plot."
         ),
         params={
             "phit": {"type": "array", "items": {"type": "number"}, "description": "Porosity log (fraction, 0-1)."},
             "vclay": {"type": "array", "items": {"type": "number"}, "description": "Clay-volume log (fraction, 0-1)."},
-            "target": {"type": "string", "description": "Target property to correlate against: 'vclay' (default) or 'phit'."},
-            "fluid": {"type": "string", "description": "Pore fluid for the rock-physics prediction: 'brine'/'water', 'oil', or 'gas' (default 'brine')."},
+            "target": {"type": "string", "description": "Target property to correlate against: 'vclay' (default), 'phit', or 'sw'."},
+            "fluid": {"type": "string", "description": "Pore fluid for the vclay/phit prediction: 'brine'/'water', 'oil', or 'gas' (default 'brine')."},
             "chi_min": {"type": "number", "description": "Minimum rotation angle in degrees (default -90)."},
             "chi_max": {"type": "number", "description": "Maximum rotation angle in degrees (default 90)."},
             "chi_step": {"type": "number", "description": "Rotation-angle step in degrees (default 1)."},
+            "sw": {"type": "array", "items": {"type": "number"}, "description": "Water-saturation log (fraction, 0-1); required when target='sw'."},
+            "hydrocarbon": {"type": "string", "description": "Hydrocarbon end-member for target='sw': 'gas' (default) or 'oil'."},
+            "law": {"type": "string", "description": "Fluid-mixing law for target='sw': 'reuss' (default) or 'brie'."},
         },
         required=["phit", "vclay"],
-        defaults={"target": "vclay", "fluid": "brine", "chi_min": -90.0, "chi_max": 90.0, "chi_step": 1.0},
+        defaults={"target": "vclay", "fluid": "brine", "chi_min": -90.0, "chi_max": 90.0, "chi_step": 1.0, "sw": None, "hydrocarbon": "gas", "law": "reuss"},
         auto_plot=None,
     ),
     WorkflowSpec(
