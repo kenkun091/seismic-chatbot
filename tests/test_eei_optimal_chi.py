@@ -70,6 +70,18 @@ def test_scan_nonphysical_sample_raises():
         _eei_chi_scan(vp, vs, rho, vp * rho, np.arange(-90.0, 91.0, 1.0))
 
 
+def test_scan_empty_chi_raises():
+    vp, vs, rho = _logs()
+    with pytest.raises(ValueError):
+        _eei_chi_scan(vp, vs, rho, vp * rho, np.array([]))
+
+
+def test_scan_chi_out_of_range_raises():
+    vp, vs, rho = _logs()
+    with pytest.raises(ValueError):
+        _eei_chi_scan(vp, vs, rho, vp * rho, np.array([-90.0, 0.0, 120.0]))
+
+
 import os
 
 from tools.avo_tools import eei_optimal_chi
