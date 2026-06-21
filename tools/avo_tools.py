@@ -315,3 +315,61 @@ def plot_avo_crossplot(intercept, gradient, avo_class=None, output_path=None):
     fig.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
     return output_path
+
+
+def _eei_chi_scan(vp, vs, rho, target, chi, k=None):
+    """Scan rotation angle chi for the EEI projection best correlated with a target log.
+
+    EEI(chi) over a log (Whitcombe 2002), with a single SCALAR background K so chi has
+    a consistent meaning across the interval. Returns chi*, the Pearson r vs chi curve,
+    the signed correlation at chi*, and the EEI log at chi*. Raw (un-normalized) EEI is
+    used: Pearson r is scale-invariant, so normalization is unnecessary.
+    """
+    vp = np.asarray(vp, dtype=float)
+    vs = np.asarray(vs, dtype=float)
+    rho = np.asarray(rho, dtype=float)
+    target = np.asarray(target, dtype=float)
+    chi = np.atleast_1d(np.asarray(chi, dtype=float))
+
+    if not (vp.shape == vs.shape == rho.shape == target.shape) or vp.ndim != 1:
+        raise ValueError("vp, vs, rho, target must be 1-D logs of equal length")
+    if vp.size < 2:
+        raise ValueError("logs must have at least 2 samples to correlate")
+    if chi.size == 0:
+        raise ValueError("chi sweep is empty")
+    if np.any(np.abs(chi) > 90):
+        raise ValueError("chi (rotation angle) must be within [-90, 90] degrees")
+    # Per-sample physical validity (vp>0, rho>0, 0<vs<vp).
+    if np.any(vp <= 0) or np.any(rho <= 0) or np.any(vs <= 0) or np.any(vs >= vp):
+        raise ValueError("non-physical elastic sample: require vp>0, rho>0, 0<vs<vp")
+    if np.std(target) == 0:
+        raise ValueError("target log has zero variance; cannot correlate")
+
+    K = float(np.mean((vs / vp) ** 2)) if k is None else float(k)
+    x = np.radians(chi)
+    # exponents per chi (1-D, length n_chi)
+    p = np.cos(x) + np.sin(x)
+    q = -8.0 * K * np.sin(x)
+    r = np.cos(x) - 4.0 * K * np.sin(x)
+
+    # EEI log per chi: shape (n_samples, n_chi) via outer broadcasting.
+    log_eei = (np.log(vp)[:, None] * p[None, :]
+               + np.log(vs)[:, None] * q[None, :]
+               + np.log(rho)[:, None] * r[None, :])
+    eei = np.exp(log_eei)  # (n_samples, n_chi)
+
+    t = target - target.mean()
+    t_norm = np.sqrt(np.sum(t ** 2))
+    e = eei - eei.mean(axis=0, keepdims=True)
+    e_norm = np.sqrt(np.sum(e ** 2, axis=0))
+    e_norm = np.where(e_norm == 0, np.nan, e_norm)  # guard flat EEI columns
+    corr = (t @ e) / (t_norm * e_norm)  # Pearson r per chi, shape (n_chi,)
+
+    best = int(np.nanargmax(np.abs(corr)))
+    return {
+        "chi": [float(c) for c in chi],
+        "correlation": [float(c) for c in corr],
+        "optimal_chi": float(chi[best]),
+        "max_correlation": float(corr[best]),
+        "eei_optimal": [float(v) for v in eei[:, best]],
+    }
