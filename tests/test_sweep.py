@@ -165,3 +165,14 @@ def test_run_sweep_adds_image_path_categorical():
                     metric="avo_class", fixed=_PETRO_FIXED)
     assert _png_ok(res["image_path"])
     os.remove(res["image_path"])
+
+
+def test_run_sweep_adds_image_path_histogram_3d():
+    # >2 swept numeric dims -> the histogram fallback branch of plot_sweep.
+    res = run_sweep("petro_to_avo",
+                    {"phit_sand": [0.20, 0.30], "vclay_sand": [0.10, 0.20],
+                     "phit_shale": [0.08, 0.12]},
+                    metric="gradient", fixed=_PETRO_FIXED)
+    assert len(res["rows"]) == 8
+    assert _png_ok(res["image_path"])
+    os.remove(res["image_path"])

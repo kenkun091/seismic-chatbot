@@ -708,7 +708,7 @@ Expected: FAIL — the bullet is not present yet.
 In `core/chatbot_tool_use.py`, in `_create_system_prompt`'s hardcoded "Available tools:" bullet list, add this bullet after the `saturation_sweep` bullet (match the neighboring bullet formatting exactly):
 
 ```
-- run_sweep: Sweep another workflow recipe over a grid of parameter values (cartesian product) and collect one scalar metric per run — returns a results table, summary statistics, a coverage report, and an aggregate plot (line for 1 parameter, heatmap for 2). Use for sensitivity / Monte-Carlo-style analysis across ranges of porosity, clay, fluid, saturation, or frequency.
+- run_sweep: Sweep another workflow recipe over a grid of parameter values (cartesian product) and collect one scalar metric per run — returns a results table, summary statistics, a coverage report, and an aggregate plot (line for 1 parameter, heatmap for 2). Use for sensitivity / scenario analysis across ranges of porosity, clay, fluid, saturation, or frequency.
 ```
 
 (No other chatbot changes: `run_sweep` returns a dict with `image_path`, so `_workflow_image_output` surfaces the plot; it is in `WORKFLOW_NAMES`, so it auto-caches via the existing branch.)
