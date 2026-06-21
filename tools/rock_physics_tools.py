@@ -379,5 +379,33 @@ def rock_physics_rag(query: str, top_k: int = 3) -> Dict[str, Any]:
         'results': formatted_results,
         'total_results': len(formatted_results)
     }
-    
+
     return response
+
+
+def _effective_fluid(sw, k_w, rho_w, k_hc, rho_hc, law="reuss", brie_exponent=3.0):
+    """Effective pore-fluid modulus and density for a brine+hydrocarbon mixture.
+
+    sw: water saturation (fraction, 0-1), scalar or array.
+    k_w/k_hc: brine/hydrocarbon bulk moduli (any consistent unit; result matches).
+    rho_w/rho_hc: brine/hydrocarbon densities (g/cc).
+    law: 'reuss' (uniform/Wood, lower bound) or 'brie' (empirical patchy).
+    brie_exponent: Brie exponent e (default 3).
+
+    Returns (K_fl, rho_fl). Density mixes linearly; K_fl per the chosen law.
+    Endpoints are exact: Sw=1 -> brine, Sw=0 -> hydrocarbon.
+    """
+    sw = np.asarray(sw, dtype=float)
+    if np.any(sw < 0) or np.any(sw > 1):
+        raise ValueError("sw (water saturation) must be within [0, 1]")
+    if k_w <= 0 or k_hc <= 0 or rho_w <= 0 or rho_hc <= 0:
+        raise ValueError("fluid moduli and densities must be positive")
+    if law not in ("reuss", "brie"):
+        raise ValueError(f"law must be 'reuss' or 'brie' (got {law!r})")
+
+    rho_fl = sw * rho_w + (1.0 - sw) * rho_hc
+    if law == "reuss":
+        k_fl = 1.0 / (sw / k_w + (1.0 - sw) / k_hc)
+    else:  # brie
+        k_fl = (k_w - k_hc) * (sw ** float(brie_exponent)) + k_hc
+    return k_fl, rho_fl
