@@ -3,7 +3,7 @@
 Predict elastic properties of a sand and an overlying shale from porosity and
 clay volume (Han 1986), assemble the shale-over-sand interface, and model the
 AVO reflectivity curve plus interpretation attributes (intercept, gradient,
-AVO class). The composite plot is added in Task 2.
+AVO class) and return a composite plot.
 """
 import os
 import tempfile

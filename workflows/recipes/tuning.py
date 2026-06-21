@@ -2,8 +2,8 @@
 
 Predict a sand and an encasing shale from porosity and clay volume, build a sand
 wedge between two shale layers, convolve to a synthetic gather, and analyze the
-amplitude-vs-thickness curve for tuning thickness and resolution limit. The
-composite plot is added in Task 2.
+amplitude-vs-thickness curve for tuning thickness and resolution limit, and
+return a composite plot.
 """
 import os
 import tempfile

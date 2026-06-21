@@ -6,6 +6,7 @@ leaf tools never see them; adapters translate Layer <-> the {vp1, vs1, ...}
 dicts the leaf tools expect.
 """
 from dataclasses import dataclass, field
+from typing import Dict
 
 
 @dataclass(frozen=True)
@@ -21,4 +22,4 @@ class Layer:
 class Scenario:
     """A named bundle of layers, e.g. Scenario("fluid", {"brine": ..., "gas": ...})."""
     name: str
-    cases: dict = field(default_factory=dict)
+    cases: Dict[str, Layer] = field(default_factory=dict)

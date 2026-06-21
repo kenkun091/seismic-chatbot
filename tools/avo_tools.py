@@ -208,9 +208,6 @@ def plot_extended_elastic_impedance(chi, eei, output_path=None):
 
     Marks chi=0 (where EEI equals the acoustic impedance) for reference.
     """
-    import tempfile
-    import os
-
     chi = np.asarray(chi, dtype=float)
     eei = np.asarray(eei, dtype=float)
 
@@ -243,9 +240,6 @@ def plot_avo_reflectivity(angles, rc, output_path=None):
     Returns:
         str: Path to the saved plot file
     """
-    import tempfile
-    import os
-    
     plt.figure(figsize=(10, 6))
     plt.plot(angles, rc, 'b-', linewidth=2, label='Reflection Coefficient')
     plt.xlabel('Incident Angle (degrees)')
@@ -274,8 +268,6 @@ def plot_avo_crossplot(intercept, gradient, avo_class=None, output_path=None):
     IV: A<0,B>0) with a Class-II band around A=0. The (intercept, gradient) point is
     marked (annotated with avo_class when supplied).
     """
-    import tempfile
-    import os
     from matplotlib.patches import Rectangle
 
     A, B = float(intercept), float(gradient)
