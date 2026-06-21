@@ -41,3 +41,9 @@ def test_system_prompt_lists_tuning(bot):
     # inside other wedge-tool descriptions, but "- tuning:" is the new bullet.
     prompt = bot._create_system_prompt()
     assert "- tuning:" in prompt
+
+
+def test_system_prompt_lists_eei_optimal_chi(bot):
+    prompt = bot._create_system_prompt()
+    assert "- eei_optimal_chi:" in prompt
+    assert "- eei_optimal_chi_petro:" in prompt
