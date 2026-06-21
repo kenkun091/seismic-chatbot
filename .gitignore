@@ -3,6 +3,7 @@
 *.csv
 *.pdf
 *.html
+!interfaces/web_interface.html
 *.json
 *.txt
 !requirements.txt

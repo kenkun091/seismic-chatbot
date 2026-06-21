@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seismic ChatBot - Example Prompts</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+        }
+        .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 30px;
+        }
+        .search-section {
+            margin-bottom: 30px;
+        }
+        .search-box {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+        .search-box:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .category {
+            margin-bottom: 30px;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .category-header {
+            background: #f8f9fa;
+            padding: 15px 20px;
+            font-weight: bold;
+            font-size: 1.2em;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .category-header:hover {
+            background: #e9ecef;
+        }
+        .category-content {
+            padding: 20px;
+            display: none;
+        }
+        .category-content.show {
+            display: block;
+        }
+        .prompt-item {
+            background: #f8f9fa;
+            margin-bottom: 15px;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        .prompt-title {
+            font-weight: bold;
+            font-size: 1.1em;
+            margin-bottom: 8px;
+            color: #333;
+        }
+        .prompt-description {
+            color: #666;
+            margin-bottom: 12px;
+            font-style: italic;
+        }
+        .prompt-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .prompt-text {
+            background: white;
+            padding: 12px;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            flex: 1;
+            word-wrap: break-word;
+            min-height: 20px;
+            display: flex;
+            align-items: center;
+        }
+        .copy-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 6px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+            min-width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .copy-btn:hover {
+            background: #5a6fd8;
+        }
+        .copy-btn:active {
+            transform: translateY(1px);
+        }
+        .copy-btn.copied {
+            background: #28a745;
+        }
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #28a745;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 6px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            transform: translateX(400px);
+            transition: transform 0.3s;
+        }
+        .notification.show {
+            transform: translateX(0);
+        }
+        .stats {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌊 Seismic ChatBot</h1>
+            <p>Example Prompts - Click to Copy</p>
+        </div>
+        
+        <div class="content">
+            <div class="search-section">
+                <input type="text" class="search-box" placeholder="Search examples..." id="searchBox">
+                <div class="stats" id="stats">
+                    <strong>Total Examples:</strong> <span id="totalCount">0</span> | 
+                    <strong>Categories:</strong> <span id="categoryCount">0</span>
+                </div>
+            </div>
+            
+            <div id="categories">
+                <!-- Categories will be populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+    
+    <div class="notification" id="notification">
+        ✅ Copied to clipboard!
+    </div>
+
+    <script>
+        // Example prompts data (this would normally come from the API)
+        const examplePrompts = {
+            "Educational Questions": [
+                {
+                    "title": "What is a Ricker wavelet?",
+                    "prompt": "What is a Ricker wavelet and why is it important in seismic analysis?",
+                    "description": "Learn about the fundamental wavelet used in seismic analysis"
+                },
+                {
+                    "title": "How does frequency affect resolution?",
+                    "prompt": "How does frequency affect seismic resolution and what are the trade-offs?",
+                    "description": "Understand the relationship between frequency and resolution"
+                },
+                {
+                    "title": "Explain tuning thickness",
+                    "prompt": "What is tuning thickness and how does it affect seismic interpretation?",
+                    "description": "Learn about tuning effects in seismic data"
+                },
+                {
+                    "title": "What is AVO analysis?",
+                    "prompt": "What is AVO (Amplitude Versus Offset) analysis and when is it used?",
+                    "description": "Understand AVO analysis principles"
+                },
+                {
+                    "title": "Zoeppritz vs Shuey",
+                    "prompt": "What's the difference between Zoeppritz and Shuey equations for AVO analysis?",
+                    "description": "Compare different AVO calculation methods"
+                }
+            ],
+            "Wavelet Tools": [
+                {
+                    "title": "Create 30 Hz Ricker",
+                    "prompt": "Create a 30 Hz Ricker wavelet",
+                    "description": "Generate a standard Ricker wavelet"
+                },
+                {
+                    "title": "Create Ormsby wavelet",
+                    "prompt": "Create an Ormsby bandpass wavelet with corner frequencies f1=5, f2=10, f3=40, f4=60 Hz",
+                    "description": "Generate a bandpass Ormsby wavelet from four corner frequencies"
+                },
+                {
+                    "title": "Plot wavelet spectrum",
+                    "prompt": "Plot the spectrum of a 40 Hz Ricker wavelet",
+                    "description": "Visualize the frequency content of a wavelet"
+                }
+            ],
+            "Wedge Modeling": [
+                {
+                    "title": "Simple wedge model",
+                    "prompt": "Make a wedge model with 100m thickness, v1=2000, v2=2500, v3=3000, rho1=2.0, rho2=2.2, rho3=2.4",
+                    "description": "Create a basic wedge model with specified parameters"
+                },
+                {
+                    "title": "Gas sand wedge",
+                    "prompt": "Create a wedge model for a gas sand with v1=2000, v2=1800, v3=2200, rho1=2.1, rho2=1.8, rho3=2.2, max_thickness=150",
+                    "description": "Model a gas sand scenario"
+                },
+                {
+                    "title": "Oil sand wedge",
+                    "prompt": "Make a wedge model for oil sand with velocities [2200, 2000, 2400] and densities [2.2, 2.0, 2.3], 120m thickness",
+                    "description": "Model an oil sand scenario"
+                },
+                {
+                    "title": "AVO wedge model at 15 degrees",
+                    "prompt": "Create a wedge model using Shuey approximation with incident angle=15, v1=2000, v2=2500, v3=3000, vs1=1000, vs2=1200, vs3=1500, rho1=2.1, rho2=2.3, rho3=2.5",
+                    "description": "Model angle-dependent reflectivity at 15 degrees"
+                },
+                {
+                    "title": "Wedge AVO angle gather",
+                    "prompt": "Build a wedge AVO angle gather over angles [0, 10, 20, 30, 40] with max_thickness=60, v1=2000, v2=2500, v3=3000, vs1=1000, vs2=1200, vs3=1500, rho1=2.1, rho2=2.3, rho3=2.5",
+                    "description": "Model a true per-angle wedge gather (one synthetic panel per incidence angle)"
+                }
+            ],
+            "AVO Analysis": [
+                {
+                    "title": "Zoeppritz reflectivity",
+                    "prompt": "Calculate Zoeppritz reflectivity for vp1=2000, vs1=800, rho1=2.0, vp2=2500, vs2=1000, rho2=2.2, angles=[0,10,20,30]",
+                    "description": "Calculate reflectivity using Zoeppritz equations"
+                },
+                {
+                    "title": "Shuey reflectivity",
+                    "prompt": "Calculate Shuey reflectivity for vp1=1800, vs1=600, rho1=1.8, vp2=2200, vs2=800, rho2=2.1, angles=[0,5,10,15,20,25,30]",
+                    "description": "Calculate reflectivity using Shuey's approximation"
+                },
+                {
+                    "title": "AVO attributes & class",
+                    "prompt": "Compute the AVO intercept, gradient, and class for an interface with vp1=2500, vs1=1200, rho1=2.3, vp2=2200, vs2=1300, rho2=2.0",
+                    "description": "Get the intercept (A), gradient (B), and AVO class with the A-B crossplot"
+                },
+                {
+                    "title": "Gas sand AVO",
+                    "prompt": "Calculate Zoeppritz reflectivity for gas sand: vp1=2200, vs1=800, rho1=2.1, vp2=1800, vs2=600, rho2=1.8, angles=[0,5,10,15,20,25,30]",
+                    "description": "Model gas sand AVO response"
+                }
+            ],
+            "Rock Physics": [
+                {
+                    "title": "Calculate rock properties",
+                    "prompt": "Calculate Vp, Vs, and density for porosity=0.25, clay_volume=0.3, fluid_type='water'",
+                    "description": "Calculate elastic properties from porosity and clay content"
+                },
+                {
+                    "title": "Gas sand properties",
+                    "prompt": "Calculate rock properties for porosity=0.20, clay_volume=0.15, fluid_type='gas'",
+                    "description": "Model gas sand elastic properties"
+                },
+                {
+                    "title": "Plot rock properties",
+                    "prompt": "Calculate and plot rock properties for porosity range [0.1, 0.3] and clay volume [0.1, 0.5] with water saturation",
+                    "description": "Visualize how rock properties vary with porosity and clay content"
+                },
+                {
+                    "title": "Gassmann fluid substitution",
+                    "prompt": "Run Gassmann fluid substitution from brine to gas for vp=2800, vs=1500, rho=2.2, porosity=0.25",
+                    "description": "Substitute the pore fluid and get the new Vp, Vs, and density"
+                },
+                {
+                    "title": "Saturation sweep",
+                    "prompt": "Calculate Vp, Vs and Vp/Vs across water saturation [0, 0.2, 0.4, 0.6, 0.8, 1.0] for porosity=0.25, clay_volume=0.15 with a gas hydrocarbon",
+                    "description": "Model elastic properties along a fluid-saturation line"
+                },
+                {
+                    "title": "Predict layer from logs",
+                    "prompt": "Predict the representative Vp, Vs and density of a sand from porosity log [0.22, 0.25, 0.2, 0.27] and clay log [0.1, 0.15, 0.08, 0.12], gas-filled",
+                    "description": "Reduce porosity/clay logs to one representative elastic layer (Han 1986)"
+                },
+                {
+                    "title": "Rock physics RAG query",
+                    "prompt": "What are the key factors that affect P-wave velocity in rocks?",
+                    "description": "Use RAG to get information about velocity controls"
+                },
+                {
+                    "title": "Fluid substitution effects",
+                    "prompt": "How do different fluids affect seismic velocities and what are the implications for AVO analysis?",
+                    "description": "Learn about fluid effects on rock properties"
+                },
+                {
+                    "title": "Elastic modulus relationships",
+                    "prompt": "What are the relationships between bulk modulus, shear modulus, and seismic velocities?",
+                    "description": "Understand elastic property relationships"
+                }
+            ],
+            "Workflows & Advanced Analysis": [
+                {
+                    "title": "Petro-to-AVO feasibility",
+                    "prompt": "Run a petro-to-AVO feasibility for a gas sand with porosity 0.25 and clay volume 0.15 below a shale with porosity 0.1 and clay volume 0.6, over angles [0, 10, 20, 30, 40]",
+                    "description": "End-to-end workflow: predict elastic properties, build the interface, and model the AVO curve + attributes"
+                },
+                {
+                    "title": "Fluid scenario comparison",
+                    "prompt": "Compare the AVO response of a sand (porosity 0.25, clay 0.15) under a shale (porosity 0.1, clay 0.6) for brine vs gas across angles [0, 10, 20, 30, 40]",
+                    "description": "Gassmann fluid-substitution scenarios overlaid for DHI / fluid feasibility"
+                },
+                {
+                    "title": "Wedge tuning from petrophysics",
+                    "prompt": "Analyze wedge tuning for a sand (porosity 0.25, clay 0.15) encased in shale (porosity 0.1, clay 0.6) with 60 m max thickness and a 30 Hz wavelet",
+                    "description": "Predict the layers, build the wedge, and find the tuning thickness and resolution limit"
+                },
+                {
+                    "title": "EEI optimal rotation angle",
+                    "prompt": "Find the EEI rotation angle that best correlates with clay volume for porosity log [0.2, 0.25, 0.18, 0.3] and clay log [0.4, 0.2, 0.6, 0.1]",
+                    "description": "Extended Elastic Impedance: scan chi for the best lithology/porosity/Sw discriminator"
+                },
+                {
+                    "title": "Parameter sweep / sensitivity",
+                    "prompt": "Sweep the petro_to_avo gradient over sand porosity [0.1, 0.2, 0.3] and fluid [brine, gas], holding the shale and angles [0, 10, 20, 30] fixed",
+                    "description": "Run a recipe across a parameter grid and summarize how an output responds"
+                }
+            ]
+        };
+
+        function renderCategories(categories) {
+            const container = document.getElementById('categories');
+            container.innerHTML = '';
+            
+            let totalPrompts = 0;
+            
+            Object.keys(categories).forEach(category => {
+                const prompts = categories[category];
+                totalPrompts += prompts.length;
+                
+                const categoryDiv = document.createElement('div');
+                categoryDiv.className = 'category';
+                
+                const header = document.createElement('div');
+                header.className = 'category-header';
+                header.innerHTML = `
+                    ${category}
+                    <span style="font-size: 0.8em; opacity: 0.7;">(${prompts.length} examples)</span>
+                `;
+                
+                const content = document.createElement('div');
+                content.className = 'category-content';
+                
+                prompts.forEach(prompt => {
+                    const promptDiv = document.createElement('div');
+                    promptDiv.className = 'prompt-item';
+                    promptDiv.innerHTML = `
+                        <div class="prompt-title">${prompt.title}</div>
+                        <div class="prompt-description">${prompt.description}</div>
+                        <div class="prompt-row">
+                            <div class="prompt-text">${prompt.prompt}</div>
+                            <button class="copy-btn" onclick="copyToClipboard('${prompt.prompt.replace(/'/g, "\\'")}')" title="Copy prompt">
+                                📋
+                            </button>
+                        </div>
+                    `;
+                    content.appendChild(promptDiv);
+                });
+                
+                categoryDiv.appendChild(header);
+                categoryDiv.appendChild(content);
+                container.appendChild(categoryDiv);
+                
+                // Add click handler for category header
+                header.addEventListener('click', () => {
+                    content.classList.toggle('show');
+                });
+            });
+            
+            // Update stats
+            document.getElementById('totalCount').textContent = totalPrompts;
+            document.getElementById('categoryCount').textContent = Object.keys(categories).length;
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                showNotification();
+                
+                // Update button text temporarily
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '✅';
+                btn.classList.add('copied');
+                
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.classList.remove('copied');
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+                alert('Failed to copy to clipboard. Please copy manually.');
+            });
+        }
+
+        function showNotification() {
+            const notification = document.getElementById('notification');
+            notification.classList.add('show');
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 2000);
+        }
+
+        function searchPrompts(query) {
+            const results = {};
+            const queryLower = query.toLowerCase();
+            
+            Object.keys(examplePrompts).forEach(category => {
+                const filtered = examplePrompts[category].filter(prompt => 
+                    prompt.title.toLowerCase().includes(queryLower) ||
+                    prompt.description.toLowerCase().includes(queryLower) ||
+                    prompt.prompt.toLowerCase().includes(queryLower)
+                );
+                
+                if (filtered.length > 0) {
+                    results[category] = filtered;
+                }
+            });
+            
+            return results;
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            renderCategories(examplePrompts);
+            
+            // Search functionality
+            const searchBox = document.getElementById('searchBox');
+            searchBox.addEventListener('input', (e) => {
+                const query = e.target.value.trim();
+                if (query === '') {
+                    renderCategories(examplePrompts);
+                } else {
+                    const filtered = searchPrompts(query);
+                    renderCategories(filtered);
+                }
+            });
+        });
+    </script>
+</body>
+</html> 
