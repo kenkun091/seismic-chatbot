@@ -99,3 +99,11 @@ def test_saturation_guards():
         rock_properties_saturation(0.25, 0.20, sw=0.5, hydrocarbon="water")  # not a HC
     with pytest.raises(ValueError):
         rock_properties_saturation(0.25, 0.20, sw=0.5, law="bogus")  # bad law
+
+
+def test_effective_fluid_rejects_each_nonpositive():
+    bad = [(-1.0, 1.0, 0.05, 0.2), (2.2, -1.0, 0.05, 0.2),
+           (2.2, 1.0, -0.1, 0.2), (2.2, 1.0, 0.05, -0.2)]
+    for k_w, rho_w, k_hc, rho_hc in bad:
+        with pytest.raises(ValueError):
+            _effective_fluid(0.5, k_w, rho_w, k_hc, rho_hc)

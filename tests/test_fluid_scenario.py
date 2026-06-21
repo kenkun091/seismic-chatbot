@@ -66,3 +66,15 @@ def test_fluid_scenario_returns_image_path():
     assert isinstance(path, str) and path.endswith(".png")
     assert os.path.getsize(path) > 0
     os.remove(path)
+
+
+def test_fluid_scenario_zoeppritz_method():
+    res = fluid_scenario(
+        phit_sand=0.25, vclay_sand=0.15,
+        phit_shale=0.10, vclay_shale=0.30,
+        angles=[0, 10, 20, 30], fluids=["brine", "gas"], method="zoeppritz",
+    )
+    assert res["method"] == "zoeppritz"
+    assert set(res["cases"]) >= {"brine", "gas"}
+    assert res["image_path"].endswith(".png")
+    os.remove(res["image_path"])

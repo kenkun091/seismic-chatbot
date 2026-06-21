@@ -59,6 +59,18 @@ def test_tuning_returns_image_path():
     os.remove(path)
 
 
+def test_tuning_fluid_sand_gas():
+    res = tuning(
+        phit_sand=0.25, vclay_sand=0.15,
+        phit_shale=0.10, vclay_shale=0.30,
+        max_thickness=50, wavelet_freq=30, num_traces=21,
+        fluid_sand="gas",
+    )
+    assert res["tuning_thickness"] > 0
+    assert res["image_path"].endswith(".png")
+    os.remove(res["image_path"])
+
+
 def test_tuning_zero_max_thickness_raises():
     with pytest.raises(ValueError):
         tuning(

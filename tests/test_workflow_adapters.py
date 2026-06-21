@@ -102,6 +102,14 @@ def test_reduce_out_of_range_index_raises_value_error():
         _reduce([1.0, 2.0], reduce=5)
 
 
+def test_predict_layer_oil_and_gas_physical():
+    for fluid in ("oil", "gas"):
+        ly = predict_layer(0.25, 0.15, fluid=fluid)
+        assert isinstance(ly, Layer)
+        assert 0 < ly.vs < ly.vp
+        assert ly.rho > 0
+
+
 def test_layer_from_gassmann_brine_to_gas():
     # Shear modulus is fluid-independent: gas LOWERS Vp and RAISES Vs (lower density),
     # and lowers bulk density. Result must be a scalar Layer (G2 + G3).
