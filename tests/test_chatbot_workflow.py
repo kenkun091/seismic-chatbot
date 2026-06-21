@@ -53,3 +53,8 @@ def test_system_prompt_lists_saturation(bot):
     prompt = bot._create_system_prompt()
     assert "- rock_properties_saturation:" in prompt
     assert "- saturation_sweep:" in prompt
+
+
+def test_system_prompt_lists_run_sweep(bot):
+    prompt = bot._create_system_prompt()
+    assert "- run_sweep:" in prompt
