@@ -618,50 +618,52 @@ within the constraints above."""
             str: The chatbot's response
         """
         messages = [{"role": "user", "content": user_input}]
-        
-        # Send request to LLM
-        response = self.llm_client.get_completion(
-            system_prompt=self.system_prompt,
-            user_prompt="",
-            tools=self.tools,
-            messages=messages
-        )
-        
-        # Update token usage statistics
-        if response.get("usage"):
-            self.context_manager.update_token_usage(response["usage"])
-        
-        # If LLM wants to use a tool
-        if response.get("tool_calls"):
-            # Append the assistant message with tool_calls
-            messages.append({
-                "role": "assistant",
-                "content": response["content"],
-                "tool_calls": response["tool_calls"]
-            })
-            
+
+        # Agentic tool loop: the model may chain several tool calls (e.g. compute,
+        # then look up context) before giving a final answer. A single pass would
+        # drop any follow-up tool call and return the model's dangling preamble, so
+        # we loop until the model stops calling tools (bounded to avoid runaways).
+        MAX_TOOL_ROUNDS = 5
+        for _ in range(MAX_TOOL_ROUNDS):
+            response = self.llm_client.get_completion(
+                system_prompt=self.system_prompt,
+                user_prompt="",
+                tools=self.tools,
+                messages=messages
+            )
+            if response.get("usage"):
+                self.context_manager.update_token_usage(response["usage"])
+
+            if not response.get("tool_calls"):
+                # No tool requested: this is the final answer.
+                messages.append({"role": "assistant", "content": response["content"]})
+                result = self._extract_reply(response["content"]) or response["content"]
+                if isinstance(result, bool):
+                    result = str(result)
+                return result
+
+            # Execute the (first) requested tool. Append only the tool_call we
+            # respond to so every assistant tool_call has a matching tool result.
             tool_call = response["tool_calls"][0]
             tool_name = tool_call.function.name
             tool_input_str = tool_call.function.arguments
-            
+            messages.append({
+                "role": "assistant",
+                "content": response["content"],
+                "tool_calls": [tool_call]
+            })
+
             try:
-                # Parse tool input
                 tool_input = self._parse_tool_input(tool_input_str)
-                
-                # Execute the tool
                 tool_result = self.tool_manager.process_tool_call(tool_name, tool_input)
-                
-                # Add tool result to messages (role: tool)
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
                     "content": str(tool_result)
                 })
-                
-                # Update context
                 self._update_context(tool_name, tool_input, tool_result)
-                
-                # Handle special cases for image outputs
+
+                # A plot/image short-circuits: it is the user-facing deliverable.
                 if self._is_image_output(tool_name, tool_result):
                     return {"image_path": tool_result}
 
@@ -669,40 +671,30 @@ within the constraints above."""
                 if workflow_image is not None:
                     return workflow_image
 
-                # Handle automatic chaining
                 chained_result = self._handle_automatic_chaining(tool_name, tool_input, tool_result)
                 if chained_result:
                     return chained_result
-                
-                # Get final response from LLM
-                final_response = self.llm_client.get_completion(
-                    system_prompt=self.system_prompt,
-                    user_prompt="",
-                    tools=self.tools,
-                    messages=messages
-                )
-                
-                # Update token usage statistics
-                if final_response.get("usage"):
-                    self.context_manager.update_token_usage(final_response["usage"])
-                
-                result = self._extract_reply(final_response["content"]) or final_response["content"]
-                # Ensure we never return boolean values
-                if isinstance(result, bool):
-                    result = str(result)
-                return result
-                
+
+                # No image produced: loop so the model can use the tool result to
+                # summarize or chain another tool.
             except Exception as e:
                 logger.error(f"Tool execution failed: {e}")
                 return f"Error executing tool: {str(e)}"
-        else:
-            # Return the direct response
-            messages.append({"role": "assistant", "content": response["content"]})
-            result = self._extract_reply(response["content"]) or response["content"]
-            # Ensure we never return boolean values
-            if isinstance(result, bool):
-                result = str(result)
-            return result
+
+        # Round budget exhausted while still calling tools: force a tool-free
+        # completion so the user gets a textual answer instead of nothing.
+        final_response = self.llm_client.get_completion(
+            system_prompt=self.system_prompt,
+            user_prompt="",
+            tools=None,
+            messages=messages
+        )
+        if final_response.get("usage"):
+            self.context_manager.update_token_usage(final_response["usage"])
+        result = self._extract_reply(final_response["content"]) or final_response["content"]
+        if isinstance(result, bool):
+            result = str(result)
+        return result
     
     def _workflow_image_output(self, tool_result):
         """Surface a composite plot path from a workflow's dict result, if present."""
@@ -774,6 +766,21 @@ within the constraints above."""
                 if not (isinstance(tool_result, np.ndarray) and "chi" in tool_input):
                     return None
                 plot_input = {"chi": tool_input["chi"], "eei": tool_result}
+            elif tool_name == "calculate_rock_properties":
+                last = self.context_manager.get_context("last_rock_properties")
+                if not last:
+                    return None
+                plot_input = {
+                    "phit": last["phit"],
+                    "vclay": last["vclay"],
+                    "vp": last["vp"],
+                    "vs": last["vs"],
+                    "rhob": last["rhob"],
+                    "vp_vs_ratio": last["vp_vs_ratio"],
+                    "ai": last["acoustic_impedance"],
+                    "si": last["shear_impedance"],
+                    "fluid_type": last.get("fluid_type", "water"),
+                }
             else:
                 return None
 

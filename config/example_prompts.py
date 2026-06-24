@@ -175,6 +175,34 @@ EXAMPLE_PROMPTS = {
             "prompt": "Sweep the petro_to_avo gradient over sand porosity [0.1, 0.2, 0.3] and fluid [brine, gas], holding the shale and angles [0, 10, 20, 30] fixed",
             "description": "Run a recipe across a parameter grid and summarize how an output responds"
         }
+    ],
+
+    "Agentic Flows": [
+        {
+            "title": "Wavelet → wedge → tuning",
+            "prompt": "Create a 30 Hz Ricker wavelet, build a wedge model with it (v1=2000, v2=2500, v3=3000, rho1=2.0, rho2=2.2, rho3=2.4, max_thickness=80), then tell me the tuning thickness",
+            "description": "Multi-step goal: the agent chains make_ricker → wedge_model → analyze_wedge across rounds"
+        },
+        {
+            "title": "Rock properties → AVO class",
+            "prompt": "Compute gas-sand rock properties at porosity=0.2, clay_volume=0.15, then put that sand under a shale (vp=2800, vs=1400, rho=2.4) and tell me the AVO intercept, gradient, and class",
+            "description": "The agent computes elastic properties, then feeds them into avo_attributes for the A/B and AVO class"
+        },
+        {
+            "title": "Fluid substitution → AVO compare",
+            "prompt": "Take a brine sand (vp=2800, vs=1500, rho=2.2, porosity=0.25), substitute gas into it, then compute Zoeppritz reflectivity for both the brine and gas cases under a shale (vp=3000, vs=1600, rho=2.4) and compare them",
+            "description": "Chains gassmann_substitution → zoeppritz_reflectivity twice to contrast the fluid AVO responses"
+        },
+        {
+            "title": "Logs → layer → tuning",
+            "prompt": "Predict the elastic properties of a gas sand from porosity log [0.22, 0.25, 0.2, 0.27] and clay log [0.1, 0.15, 0.08, 0.12], then build a wedge with that sand encased in shale (vp=3000, vs=1500, rho=2.4, max_thickness=60) and find the tuning thickness",
+            "description": "The agent reduces logs with predict_elastic_layer, builds the wedge, then runs analyze_wedge"
+        },
+        {
+            "title": "EEI chi → impedance log",
+            "prompt": "Find the EEI rotation angle best correlated with clay volume for porosity log [0.2, 0.25, 0.18, 0.3] and clay log [0.4, 0.2, 0.6, 0.1], then compute the EEI log at that angle",
+            "description": "Chains eei_optimal_chi → extended_elastic_impedance to compute the optimal-angle impedance"
+        }
     ]
 }
 

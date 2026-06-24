@@ -1,6 +1,11 @@
 # Tools for rock physics calculations
+import os
+import tempfile
 import numpy as np
 import warnings
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 from typing import Dict, List, Any, Optional, Union
 from knowledge.vector_db import VectorDatabase
 from knowledge.topics.rock_physics import ROCK_PHYSICS_KNOWLEDGE
@@ -265,6 +270,87 @@ def calculate_rock_properties(phit, vclay, fluid_type='water', print_results=Tru
         print("=" * 40)
     
     return vp, vs, rhob, vp_vs_ratio, ai, si
+
+
+def plot_rock_properties(phit, vclay, vp, vs, rhob, vp_vs_ratio, ai, si,
+                         fluid_type='water', output_path=None):
+    """Plot rock properties (from calculate_rock_properties) versus porosity.
+
+    Produces a 2x2 figure — Vp & Vs, bulk density, Vp/Vs, and AI & SI — each as a
+    function of porosity (samples sorted by porosity for a clean curve). Accepts
+    scalar or array inputs (as returned by calculate_rock_properties) and returns
+    the path to the saved PNG.
+
+    Args:
+        phit, vclay: porosity and clay-volume inputs (scalar or array).
+        vp, vs, rhob, vp_vs_ratio, ai, si: the six outputs of
+            calculate_rock_properties (each scalar or array, aligned with phit).
+        fluid_type: pore fluid label for the title.
+        output_path: optional PNG path; a temp file is used when omitted.
+
+    Returns:
+        str: path to the saved PNG.
+    """
+    phit = np.atleast_1d(np.asarray(phit, dtype=float))
+    vp = np.atleast_1d(np.asarray(vp, dtype=float))
+    vs = np.atleast_1d(np.asarray(vs, dtype=float))
+    rhob = np.atleast_1d(np.asarray(rhob, dtype=float))
+    vp_vs_ratio = np.atleast_1d(np.asarray(vp_vs_ratio, dtype=float))
+    ai = np.atleast_1d(np.asarray(ai, dtype=float))
+    si = np.atleast_1d(np.asarray(si, dtype=float))
+
+    # Sort by porosity so the curves read left-to-right when phit is unordered.
+    if phit.size == vp.size and phit.size > 1:
+        order = np.argsort(phit)
+        x = phit[order]
+        vp, vs, rhob = vp[order], vs[order], rhob[order]
+        vp_vs_ratio, ai, si = vp_vs_ratio[order], ai[order], si[order]
+        xlabel = "Porosity (φ)"
+    else:
+        # Single sample (or mismatched lengths): plot against sample index.
+        x = phit if phit.size == vp.size else np.arange(vp.size)
+        xlabel = "Porosity (φ)" if phit.size == vp.size else "Sample"
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 9))
+    fig.suptitle(f"Rock Properties vs Porosity ({fluid_type}-saturated)", fontsize=14)
+
+    ax = axes[0, 0]
+    ax.plot(x, vp, "o-", color="tab:blue", label="Vp")
+    ax.plot(x, vs, "s-", color="tab:red", label="Vs")
+    ax.set_ylabel("Velocity (m/s)")
+    ax.set_xlabel(xlabel)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    ax = axes[0, 1]
+    ax.plot(x, rhob, "o-", color="tab:green")
+    ax.set_ylabel("Bulk density (g/cc)")
+    ax.set_xlabel(xlabel)
+    ax.grid(True, alpha=0.3)
+
+    ax = axes[1, 0]
+    ax.plot(x, vp_vs_ratio, "o-", color="tab:purple")
+    ax.set_ylabel("Vp/Vs")
+    ax.set_xlabel(xlabel)
+    ax.grid(True, alpha=0.3)
+
+    ax = axes[1, 1]
+    ax.plot(x, ai, "o-", color="tab:blue", label="AI")
+    ax.plot(x, si, "s-", color="tab:red", label="SI")
+    ax.set_ylabel("Impedance (×10⁶ kg/m²·s)")
+    ax.set_xlabel(xlabel)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    fig.tight_layout(rect=(0, 0, 1, 0.97))
+
+    if output_path is None:
+        fd, output_path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
 
 def calculate_elastic_moduli(vp, vs, rhob):
     """

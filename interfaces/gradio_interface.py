@@ -79,16 +79,7 @@ def create_chat_interface():
         - Calculating AVO reflectivity using Zoeppritz and Shuey equations
         - Answering questions about seismic properties
         - Explaining seismic modeling concepts
-        
-        # **Available Tools:**
-        # - `make_ricker`: Create Ricker wavelets with specified frequency
-        # - `plot_ricker`: Plot wavelets with time and frequency analysis
-        # - `wedge_model`: Create wedge models for seismic analysis
-        # - `plot_wedge_model`: Plot wedge model results
-        # - `zoeppritz_reflectivity`: Calculate reflectivity using Zoeppritz equations
-        # - `shuey_reflectivity`: Calculate reflectivity using Shuey's approximation
-        # - `plot_avo_reflectivity`: Plot AVO reflectivity curves
-        
+
         **💡 Tip:** Use the example prompts below to get started quickly!
         """)
         

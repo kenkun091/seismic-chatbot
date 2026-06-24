@@ -81,21 +81,6 @@ The implementation follows this flow:
 4. **Result Processing**: Tool results are added to conversation
 5. **Final Response**: LLM provides final response with tool results
 
-## Available Tools
-
-### Seismic Wavelet Tools
-- `make_ricker`: Create Ricker wavelets with specified frequency
-- `plot_ricker`: Plot wavelets with time and frequency analysis
-
-### Seismic Modeling Tools
-- `wedge_model`: Create wedge models for seismic analysis
-- `plot_wedge_model`: Plot wedge model results
-
-### AVO Analysis Tools
-- `zoeppritz_reflectivity`: Calculate reflectivity using Zoeppritz equations
-- `shuey_reflectivity`: Calculate reflectivity using Shuey's approximation
-- `avo_fluid_indicator`: Calculate AVO fluid indicators
-
 ## Usage Examples
 
 ### Command Line Interface

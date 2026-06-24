@@ -11,7 +11,7 @@ from typing import Callable, Optional
 from tools.ricker_tools import create_ricker_wavelet, create_ormsby_wavelet, plot_wavelet
 from tools.wedge_tools import create_wedge_model, plot_wedge_model, analyze_wedge, wedge_avo_gather, plot_wedge_gather, analyze_wedge_gather
 from tools.avo_tools import zoeppritz_reflectivity, shuey_reflectivity, plot_avo_reflectivity, avo_attributes, plot_avo_crossplot, extended_elastic_impedance, plot_extended_elastic_impedance, eei_optimal_chi
-from tools.rock_physics_tools import calculate_rock_properties, rock_physics_rag, gassmann_substitution, rock_properties_saturation
+from tools.rock_physics_tools import calculate_rock_properties, plot_rock_properties, rock_physics_rag, gassmann_substitution, rock_properties_saturation
 from tools.rag_tools import knowledge_rag
 from workflows.adapters import predict_elastic_layer
 from workflows.engine import WORKFLOW_REGISTRY
@@ -428,6 +428,25 @@ REGISTRY = [
             },
         },
         required=["phit", "vclay"],
+        defaults={"fluid_type": "water"},
+        auto_plot="plot_rock_properties",
+    ),
+    ToolSpec(
+        name="plot_rock_properties",
+        fn=plot_rock_properties,
+        description="Plots rock properties (Vp & Vs, bulk density, Vp/Vs, acoustic & shear impedance) versus porosity from the outputs of calculate_rock_properties.",
+        params={
+            "phit": {"type": "array", "items": {"type": "number"}, "description": "Porosity values (fraction, 0-1)."},
+            "vclay": {"type": "array", "items": {"type": "number"}, "description": "Clay volume values (fraction, 0-1)."},
+            "vp": {"type": "array", "items": {"type": "number"}, "description": "P-wave velocity values in m/s."},
+            "vs": {"type": "array", "items": {"type": "number"}, "description": "S-wave velocity values in m/s."},
+            "rhob": {"type": "array", "items": {"type": "number"}, "description": "Bulk density values in g/cc."},
+            "vp_vs_ratio": {"type": "array", "items": {"type": "number"}, "description": "Vp/Vs ratio values."},
+            "ai": {"type": "array", "items": {"type": "number"}, "description": "Acoustic impedance values (×10⁶ kg/m²·s)."},
+            "si": {"type": "array", "items": {"type": "number"}, "description": "Shear impedance values (×10⁶ kg/m²·s)."},
+            "fluid_type": {"type": "string", "description": "Pore fluid label for the title ('water', 'oil', or 'gas')."},
+        },
+        required=["phit", "vclay", "vp", "vs", "rhob", "vp_vs_ratio", "ai", "si"],
         defaults={"fluid_type": "water"},
     ),
     ToolSpec(
