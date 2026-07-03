@@ -14,11 +14,14 @@ class FakeToolCall:
 
 
 class FakeLLMClient:
-    """Returns scripted completions; no network."""
+    """Returns scripted completions; no network. Records each call's kwargs
+    so tests can assert on the messages actually sent to the model."""
     def __init__(self, responses):
         self._responses = list(responses)
+        self.calls = []
 
     def get_completion(self, *a, **k):
+        self.calls.append(k)
         return self._responses.pop(0)
 
 

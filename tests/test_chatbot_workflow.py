@@ -9,17 +9,6 @@ def bot(fake_llm_factory):
     return SeismicChatBotToolUse(llm_client=fake_llm_factory([]))
 
 
-def test_workflow_image_output_from_dict(bot):
-    out = bot._workflow_image_output({"avo_class": "III", "image_path": "/tmp/x.png"})
-    assert out == {"image_path": "/tmp/x.png"}
-
-
-def test_workflow_image_output_none_when_no_png(bot):
-    assert bot._workflow_image_output({"avo_class": "III"}) is None
-    assert bot._workflow_image_output({"image_path": 123}) is None
-    assert bot._workflow_image_output("not-a-dict") is None
-
-
 def test_update_context_caches_workflow_result(bot):
     result = {"avo_class": "III", "image_path": "/tmp/x.png"}
     bot._update_context("petro_to_avo", {"phit_sand": 0.25}, result)

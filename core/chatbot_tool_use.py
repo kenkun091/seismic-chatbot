@@ -269,15 +269,15 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
                 else:
                     print(f"\nSeismic Assistant: {response['content']}")
 
-    def process_single_input(self, user_input: str) -> str:
+    def process_single_input(self, user_input: str) -> Dict[str, Any]:
         """
         Process a single user input and return a response.
-        
+
         Args:
             user_input: The user's input text
-            
+
         Returns:
-            str: The chatbot's response
+            dict: {"reply": str, "images": list[str]} — images may be empty.
         """
         try:
             # Check if this is a knowledge question that should use RAG
@@ -288,18 +288,24 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
                 # Otherwise, use the regular tool-based approach
                 logger.info("Using tool-based approach")
                 response = self._handle_tool_request(user_input)
-            
-            # Final safety check: ensure we never return boolean values
-            if isinstance(response, bool):
-                response = str(response)
-            elif response is None:
-                response = "I didn't get a response. Please try again."
-            
-            return response
-            
+
+            if isinstance(response, dict) and "reply" in response:
+                reply = response["reply"]
+                images = list(response.get("images") or [])
+            else:
+                reply, images = response, []
+
+            # Final safety check: never surface booleans/None as the reply.
+            if isinstance(reply, bool):
+                reply = str(reply)
+            elif reply is None:
+                reply = "I didn't get a response. Please try again."
+
+            return {"reply": reply, "images": images}
+
         except Exception as e:
             logger.error(f"Error processing input: {e}")
-            return f"I encountered an error: {str(e)}"
+            return {"reply": f"I encountered an error: {str(e)}", "images": []}
     
     def _is_knowledge_question(self, user_input: str) -> bool:
         """
@@ -651,22 +657,21 @@ within the constraints above."""
                 response = str(response)
             return response
     
-    def _handle_tool_request(self, user_input: str) -> str:
+    def _handle_tool_request(self, user_input: str) -> Dict[str, Any]:
         """
-        Handle tool-based requests using the existing tool use pattern.
-        
-        Args:
-            user_input: The user's input text
-            
+        Handle a tool-use request through the bounded agentic tool loop.
+
         Returns:
-            str: The chatbot's response
+            dict: {"reply": str, "images": list[str]} — the final prose answer
+            plus every plot produced along the way (deduped, in order).
         """
         messages = [{"role": "user", "content": user_input}]
+        collected_images: List[str] = []
 
-        # Agentic tool loop: the model may chain several tool calls (e.g. compute,
-        # then look up context) before giving a final answer. A single pass would
-        # drop any follow-up tool call and return the model's dangling preamble, so
-        # we loop until the model stops calling tools (bounded to avoid runaways).
+        # Agentic tool loop: the model may chain several tool calls before
+        # giving a final answer. Plots are harvested into collected_images and
+        # a compacted tool result goes back to the model so it can narrate the
+        # numbers (bounded to avoid runaways).
         MAX_TOOL_ROUNDS = 5
         for _ in range(MAX_TOOL_ROUNDS):
             response = self.llm_client.get_completion(
@@ -681,10 +686,10 @@ within the constraints above."""
             if not response.get("tool_calls"):
                 # No tool requested: this is the final answer.
                 messages.append({"role": "assistant", "content": response["content"]})
-                result = self._extract_reply(response["content"]) or response["content"]
-                if isinstance(result, bool):
-                    result = str(result)
-                return result
+                reply = self._extract_reply(response["content"]) or response["content"]
+                if isinstance(reply, bool):
+                    reply = str(reply)
+                return {"reply": reply, "images": collected_images}
 
             # Execute the (first) requested tool. Append only the tool_call we
             # respond to so every assistant tool_call has a matching tool result.
@@ -703,27 +708,22 @@ within the constraints above."""
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
-                    "content": str(tool_result)
+                    "content": self._compact_tool_result(tool_result)
                 })
                 self._update_context(tool_name, tool_input, tool_result)
+                self._harvest_images(tool_result, collected_images)
 
-                # A plot/image short-circuits: it is the user-facing deliverable.
-                if self._is_image_output(tool_name, tool_result):
-                    return {"image_path": tool_result}
-
-                workflow_image = self._workflow_image_output(tool_result)
-                if workflow_image is not None:
-                    return workflow_image
-
+                # Auto-chaining still runs the partner plot tool; its plot now
+                # joins the harvest instead of ending the turn.
                 chained_result = self._handle_automatic_chaining(tool_name, tool_input, tool_result)
                 if chained_result:
-                    return chained_result
+                    self._harvest_images(chained_result, collected_images)
 
-                # No image produced: loop so the model can use the tool result to
-                # summarize or chain another tool.
+                # Loop so the model can narrate the result or chain another tool.
             except Exception as e:
                 logger.error(f"Tool execution failed: {e}")
-                return f"Error executing tool: {str(e)}"
+                return {"reply": f"Error executing tool: {str(e)}",
+                        "images": collected_images}
 
         # Round budget exhausted while still calling tools: force a tool-free
         # completion so the user gets a textual answer instead of nothing.
@@ -735,10 +735,10 @@ within the constraints above."""
         )
         if final_response.get("usage"):
             self.context_manager.update_token_usage(final_response["usage"])
-        result = self._extract_reply(final_response["content"]) or final_response["content"]
-        if isinstance(result, bool):
-            result = str(result)
-        return result
+        reply = self._extract_reply(final_response["content"]) or final_response["content"]
+        if isinstance(reply, bool):
+            reply = str(reply)
+        return {"reply": reply, "images": collected_images}
 
     def _harvest_images(self, tool_result: Any, collected: List[str]) -> None:
         """Collect .png paths from a tool result into `collected`.
@@ -757,29 +757,6 @@ within the constraints above."""
         if path is not None and path not in collected:
             collected.append(path)
 
-    def _workflow_image_output(self, tool_result):
-        """Surface a composite plot path from a workflow's dict result, if present."""
-        if isinstance(tool_result, dict):
-            path = tool_result.get("image_path")
-            if isinstance(path, str) and path.endswith(".png"):
-                return {"image_path": path}
-        return None
-
-    def _is_image_output(self, tool_name: str, tool_result: Any) -> bool:
-        """
-        Check if the tool result is an image output.
-        
-        Args:
-            tool_name: Name of the tool
-            tool_result: Result from the tool
-            
-        Returns:
-            bool: True if result is an image path
-        """
-        return (isinstance(tool_result, str) and 
-                tool_result.endswith(".png") and
-                tool_name in ["plot_ricker", "plot_wedge_model", "plot_avo_reflectivity", "plot_rock_properties", "plot_wedge_gather", "plot_avo_crossplot", "plot_extended_elastic_impedance"])
-    
     def _handle_automatic_chaining(self, tool_name: str, tool_input: Dict[str, Any], tool_result: Any) -> Optional[Dict[str, Any]]:
         """
         Handle automatic chaining of related tools.

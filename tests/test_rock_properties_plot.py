@@ -100,8 +100,8 @@ def test_tool_loop_executes_follow_up_tool_call(bot, fake_llm_factory):
     ])
 
     result = bot._handle_tool_request("predict the sand layer and explain it")
-    assert "look up some rock physics context" not in result
-    assert result == "Vp is about 4000 m/s."
+    assert "look up some rock physics context" not in result["reply"]
+    assert result == {"reply": "Vp is about 4000 m/s.", "images": []}
 
 
 def test_tool_loop_single_round_still_returns_text(bot, fake_llm_factory):
@@ -110,4 +110,4 @@ def test_tool_loop_single_round_still_returns_text(bot, fake_llm_factory):
         _completion(tool_calls=[tc1], content=""),
         _completion(tool_calls=None, content="<reply>Done.</reply>"),
     ])
-    assert bot._handle_tool_request("predict the layer") == "Done."
+    assert bot._handle_tool_request("predict the layer") == {"reply": "Done.", "images": []}
