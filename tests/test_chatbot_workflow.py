@@ -77,3 +77,9 @@ def test_harvest_images_ignores_non_images(bot):
     bot._harvest_images(("tuple", "result"), collected)
     bot._harvest_images(None, collected)
     assert collected == []
+
+
+def test_system_prompt_explains_narration_contract(bot):
+    prompt = bot._create_system_prompt()
+    assert "displayed to the user automatically" in prompt
+    assert "compacted" in prompt
