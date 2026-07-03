@@ -12,6 +12,10 @@ from workflows.engine import WORKFLOW_NAMES
 
 logger = logging.getLogger(__name__)
 
+# Numeric sequences longer than this are summarized before being sent back to
+# the LLM as tool-message content (narration needs the stats, not 61 floats).
+_MAX_ARRAY_PREVIEW = 12
+
 class SeismicChatBotToolUse:
     """
     Seismic ChatBot using the tool use pattern from the notebook.
@@ -121,6 +125,46 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
                 raise ValueError(f"Invalid tool input format: {e}")
         else:
             raise ValueError(f"Unexpected tool input type: {type(tool_input)}")
+
+    def _compact_tool_result(self, tool_result: Any) -> str:
+        """Compact a tool result for the LLM's role:"tool" message.
+
+        Large numeric arrays become summary strings and image paths are masked
+        — plots are displayed to the user directly, so the model should narrate
+        the numbers, not echo file paths.
+        """
+        compacted = self._compact_value(tool_result)
+        try:
+            return json.dumps(compacted, default=str)
+        except (TypeError, ValueError):
+            return str(compacted)
+
+    def _compact_value(self, value: Any) -> Any:
+        """Recursively compact one value (see _compact_tool_result)."""
+        if isinstance(value, np.ndarray):
+            if value.size > _MAX_ARRAY_PREVIEW:
+                return (f"<array shape {value.shape}, "
+                        f"min={value.min():.6g}, max={value.max():.6g}>")
+            value = value.tolist()
+        if isinstance(value, dict):
+            return {
+                k: ("<plot generated and shown to the user>"
+                    if k == "image_path" and isinstance(v, str)
+                    else self._compact_value(v))
+                for k, v in value.items()
+            }
+        if isinstance(value, (list, tuple)):
+            seq = list(value)
+            if (len(seq) > _MAX_ARRAY_PREVIEW
+                    and all(isinstance(x, (int, float)) and not isinstance(x, bool)
+                            for x in seq)):
+                arr = [float(x) for x in seq]
+                return (f"<{len(arr)} values, min={min(arr):.6g}, max={max(arr):.6g}, "
+                        f"first={arr[0]:.6g}, last={arr[-1]:.6g}>")
+            return [self._compact_value(v) for v in seq]
+        if isinstance(value, (np.floating, np.integer)):
+            return value.item()
+        return value
 
     def chat(self, user_input: str = None) -> str:
         """
