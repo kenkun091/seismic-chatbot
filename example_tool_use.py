@@ -10,6 +10,15 @@ from core.chatbot_tool_use import SeismicChatBotToolUse
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+def _print_response(response):
+    """Print a chatbot response: narrated reply first, then any plot paths."""
+    if isinstance(response, dict) and "reply" in response:
+        print(f"Assistant: {response['reply']}")
+        for path in response.get("images") or []:
+            print(f"  [plot saved: {path}]")
+    else:
+        print(f"Assistant: {response}")
+
 def demonstrate_tool_use():
     """Demonstrate the tool use pattern with various examples."""
     print("🌊 Seismic ChatBot Tool Use Pattern Demonstration")
@@ -24,7 +33,7 @@ def demonstrate_tool_use():
     question = "What is a Ricker wavelet and why is it important in seismic analysis?"
     print(f"User: {question}")
     response = chatbot.process_single_input(question)
-    print(f"Assistant: {response}")
+    _print_response(response)
     
     # Example 2: Tool use - Create Ricker wavelet
     print("\n🔧 Example 2: Tool Use - Create Ricker Wavelet")
@@ -32,7 +41,7 @@ def demonstrate_tool_use():
     request = "Create a 30 Hz Ricker wavelet"
     print(f"User: {request}")
     response = chatbot.process_single_input(request)
-    print(f"Assistant: {response}")
+    _print_response(response)
     
     # Example 3: Tool use - Wedge model with parameters
     print("\n🔧 Example 3: Tool Use - Wedge Model")
@@ -40,7 +49,7 @@ def demonstrate_tool_use():
     request = "Make a wedge model with max_thickness=100, v1=2500, v2=2400, v3=2500, rho1=2.2, rho2=2.1, rho3=2.2"
     print(f"User: {request}")
     response = chatbot.process_single_input(request)
-    print(f"Assistant: {response}")
+    _print_response(response)
     
     # Example 4: Tool use - AVO calculation
     print("\n🔧 Example 4: Tool Use - AVO Calculation")
@@ -48,7 +57,7 @@ def demonstrate_tool_use():
     request = "Calculate Zoeppritz reflectivity for vp1=2000, vs1=800, rho1=2.0, vp2=2500, vs2=1000, rho2=2.2, angles=[0,10,20,30]"
     print(f"User: {request}")
     response = chatbot.process_single_input(request)
-    print(f"Assistant: {response}")
+    _print_response(response)
     
     # Example 5: Tool use - Rock Physics
     print("\n🔧 Example 5: Tool Use - Rock Physics")
@@ -56,7 +65,7 @@ def demonstrate_tool_use():
     request = "Calculate rock properties for porosity=[0.1, 0.2, 0.3], vclay=[0.1, 0.2, 0.3], fluid_type=gas"
     print(f"User: {request}")
     response = chatbot.process_single_input(request)
-    print(f"Assistant: {response}")
+    _print_response(response)
     
     # Example 5: Follow-up question using context
     print("\n🔄 Example 5: Follow-up Question")
@@ -64,7 +73,7 @@ def demonstrate_tool_use():
     request = "Now plot that wavelet"
     print(f"User: {request}")
     response = chatbot.process_single_input(request)
-    print(f"Assistant: {response}")
+    _print_response(response)
     
     print("\n✅ Demonstration completed!")
     print("\nKey Benefits of Tool Use Pattern:")
