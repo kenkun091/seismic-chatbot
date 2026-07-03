@@ -46,7 +46,8 @@ These are the two deferred feature-scope items from the Task 14 backlog
 - Knowledge/RAG path: `{"reply": rag_answer, "images": []}`.
 - Error paths: `{"reply": "I encountered an error: ...", "images": [<collected before failure>]}`.
 - The existing bool/None safety checks fold into building this dict.
-- The `chat()` REPL entry prints the reply and lists image paths.
+- The `chat()` REPL method is unchanged: it is a console-only loop that never
+  surfaced images and does not use `_handle_tool_request`.
 
 ### 2. Agentic loop (`core/chatbot_tool_use.py::_handle_tool_request`)
 
@@ -87,8 +88,10 @@ file paths; after tools finish, summarize the key quantitative results
 - `interfaces/gradio_interface.py` (`respond`): render `reply` as the assistant
   text, then append one chat-history row per image (Gradio's tuple format is
   one file per message).
-- `interfaces/gradio_interface_legacy.py`: same, in its messages format
-  (one `{"role": "assistant", "content": (path,)}` per image).
+- `interfaces/gradio_interface_legacy.py`: **out of scope** — it consumes the
+  legacy `core/chatbot.py::SeismicChatBot.process_input`, whose contract this
+  design does not change (discovered during planning; the spec originally
+  assumed it consumed the tool-use bot).
 - `interfaces/api_interface.py`: `ChatResponse` gains `images: List[str] = []`;
   the `response` field carries the reply text (name kept for client compat —
   it previously received `str(dict)` for image results, which no client could
@@ -115,7 +118,9 @@ source rather than a UI escape hatch. `_is_image_output` and
 ### 7. Testing
 
 Update the contract-pinned tests:
-- `tests/test_chatbot.py` — three `{"image_path": ...}` asserts → new dict contract.
+- `tests/test_chatbot.py` — NO changes needed (discovered during planning):
+  its `{"image_path": ...}` asserts pin `_handle_automatic_chaining`, whose
+  return contract is intentionally preserved.
 - `tests/test_chatbot_workflow.py` — short-circuit tests become harvest tests.
 - `tests/test_rock_properties_plot.py` — chaining assert → images list.
 

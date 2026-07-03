@@ -2,6 +2,25 @@ import gradio as gr
 from core.chatbot_tool_use import SeismicChatBotToolUse
 from config.example_prompts import EXAMPLE_PROMPTS, search_prompts, get_random_prompts
 
+
+def append_bot_response(chat_history, response):
+    """Append a bot response to Gradio 3.x pair-format chat history.
+
+    The tool-use bot returns {"reply": str, "images": list[str]}: the reply
+    fills the pending assistant slot, then each image gets its own history row
+    (Gradio renders one file per message). Plain strings render as-is.
+    """
+    if isinstance(response, dict) and "reply" in response:
+        chat_history[-1][1] = response.get("reply") or ""
+        for path in response.get("images") or []:
+            chat_history.append([None, (path,)])
+    elif isinstance(response, str):
+        chat_history[-1][1] = response
+    else:
+        chat_history[-1][1] = str(response)
+    return chat_history
+
+
 def create_chat_interface():
     """Create and return the Gradio chat interface using the tool use pattern."""
     # Build the heavy, conversation-stateless components ONCE. Each browser
@@ -18,14 +37,7 @@ def create_chat_interface():
         chat_history.append([message, None])
         try:
             response = session_bot.process_single_input(message)
-
-            # Handle different response types (Gradio 3.x format)
-            if isinstance(response, dict) and 'image_path' in response:
-                chat_history[-1][1] = (response['image_path'],)
-            elif isinstance(response, str):
-                chat_history[-1][1] = response
-            else:
-                chat_history[-1][1] = str(response)
+            chat_history = append_bot_response(chat_history, response)
 
             # Per-session token usage for display
             token_usage = session_bot.context_manager.get_token_usage()
