@@ -72,8 +72,11 @@ These are the two deferred feature-scope items from the Task 14 backlog
   `{"reply": extracted, "images": collected_images}`.
 - The round-exhaustion fallback (forced tool-free completion after
   `MAX_TOOL_ROUNDS`) also returns the collected images.
-- A tool-execution exception returns
-  `{"reply": f"Error executing tool: {e}", "images": collected_images}`.
+- A tool-execution exception is fed back to the model as a `role:"tool"` error
+  message and the loop continues (bounded by `MAX_TOOL_ROUNDS`), so the model
+  can retry or narrate what it has. (Amended post-review: the original abort
+  behavior turned recoverable model mistakes — e.g. a malformed self-initiated
+  plot call — into raw error replies.)
 
 ### 3. System prompt
 

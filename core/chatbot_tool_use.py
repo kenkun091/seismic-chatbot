@@ -100,6 +100,7 @@ Guidelines:
 Tool results and plots:
 - Tool results are compacted before you see them: long numeric arrays appear as summaries like "<61 values, min=..., max=...>".
 - Any plot a tool produces is displayed to the user automatically — never print or mention image file paths.
+- Plot tools run automatically after their matching compute tool — never call a plot_* tool yourself, and never pass raw array data as tool arguments.
 - After your tools finish, state the key quantitative results (e.g. tuning thickness, AVO class, intercept/gradient, sweep statistics) in your <reply>.
 
 In each conversational turn, you will:
@@ -727,8 +728,16 @@ within the constraints above."""
                 # Loop so the model can narrate the result or chain another tool.
             except Exception as e:
                 logger.error(f"Tool execution failed: {e}")
-                return {"reply": f"Error executing tool: {str(e)}",
-                        "images": collected_images}
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": (
+                        f"Tool execution failed: {e}. Do not retry with the same "
+                        f"arguments; summarize what you have or ask the user for "
+                        f"clarification."
+                    ),
+                })
+                continue
 
         # Round budget exhausted while still calling tools: force a tool-free
         # completion so the user gets a textual answer instead of nothing.

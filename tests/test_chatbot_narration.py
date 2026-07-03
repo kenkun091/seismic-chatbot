@@ -126,21 +126,37 @@ def test_round_exhaustion_returns_reply_and_images(bot, fake_llm_factory):
                    "images": ["/tmp/t.png"]}
 
 
-def test_tool_error_returns_collected_images(bot, fake_llm_factory):
+def test_tool_error_recovers_and_narrates(bot, fake_llm_factory):
     tc1 = _FakeToolCall("tuning", '{"phit_sand": 0.25}', "c1")
     tc2 = _FakeToolCall("fluid_scenario", '{"phit_sand": 0.25}', "c2")
-    bot.llm_client = fake_llm_factory([
+    llm = fake_llm_factory([
         _completion(tool_calls=[tc1]),
         _completion(tool_calls=[tc2]),
+        _completion(content="<reply>Fluid scenario failed; tuning is 12.5 m.</reply>"),
     ])
+    bot.llm_client = llm
     bot.tool_manager = _ScriptedToolManager({
         "tuning": {"tuning_thickness": 12.5, "image_path": "/tmp/t.png"},
         "fluid_scenario": ValueError("bad fluids"),
     })
     out = bot._handle_tool_request("tuning then fluids")
-    assert out["reply"].startswith("Error executing tool:")
-    assert "bad fluids" in out["reply"]
-    assert out["images"] == ["/tmp/t.png"]
+    assert out == {"reply": "Fluid scenario failed; tuning is 12.5 m.",
+                   "images": ["/tmp/t.png"]}
+    # The model saw the error as a tool message it can react to.
+    final_messages = llm.calls[-1]["messages"]
+    assert any(m.get("role") == "tool" and "Tool execution failed" in m["content"]
+               for m in final_messages)
+
+
+def test_persistent_tool_errors_exhaust_rounds_and_still_answer(bot, fake_llm_factory):
+    calls = [_FakeToolCall("fluid_scenario", '{"phit_sand": 0.25}', f"c{i}") for i in range(5)]
+    bot.llm_client = fake_llm_factory(
+        [_completion(tool_calls=[c]) for c in calls]
+        + [_completion(content="<reply>I could not run the fluid scenario.</reply>")]
+    )
+    bot.tool_manager = _ScriptedToolManager({"fluid_scenario": ValueError("bad fluids")})
+    out = bot._handle_tool_request("fluids")
+    assert out == {"reply": "I could not run the fluid scenario.", "images": []}
 
 
 def test_process_single_input_passes_through_tool_dict(bot, monkeypatch):

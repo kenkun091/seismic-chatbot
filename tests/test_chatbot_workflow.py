@@ -83,3 +83,4 @@ def test_system_prompt_explains_narration_contract(bot):
     prompt = bot._create_system_prompt()
     assert "displayed to the user automatically" in prompt
     assert "compacted" in prompt
+    assert "never call a plot_* tool yourself" in prompt
