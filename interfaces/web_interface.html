@@ -387,6 +387,21 @@
                     "title": "EEI chi → impedance log",
                     "prompt": "Find the EEI rotation angle best correlated with clay volume for porosity log [0.2, 0.25, 0.18, 0.3] and clay log [0.4, 0.2, 0.6, 0.1], then compute the EEI log at that angle",
                     "description": "Chains eei_optimal_chi → extended_elastic_impedance to compute the optimal-angle impedance"
+                },
+                {
+                    "title": "Compare two wavelets (two plots)",
+                    "prompt": "Create both a 25 Hz Ricker wavelet and a 5-10-40-60 Hz Ormsby wavelet, then compare their side lobes and temporal resolution",
+                    "description": "One turn, two plots: the agent runs both wavelet tools and narrates the comparison alongside both images"
+                },
+                {
+                    "title": "Wedge + angle gather in one go",
+                    "prompt": "For layers v1=2000, v2=2500, v3=3000, vs1=1000, vs2=1200, vs3=1500, rho1=2.1, rho2=2.3, rho3=2.5 with max_thickness=60, build the zero-offset wedge model and a wedge AVO gather over angles [0, 10, 20, 30], then summarize the tuning thickness and how the top-interface amplitude varies with angle",
+                    "description": "Chains wedge_model and wedge_avo_gather in one request — both plots are returned with a narrated summary"
+                },
+                {
+                    "title": "Brine vs gas tuning compare",
+                    "prompt": "Analyze wedge tuning for a sand (porosity 0.25, clay 0.15) encased in shale (porosity 0.1, clay 0.6) with a 30 Hz wavelet and 60 m max thickness, once brine-filled and once gas-filled, and tell me how the tuning thickness and amplitude change",
+                    "description": "Runs the tuning workflow twice (brine vs gas) and narrates the difference — both tuning plots shown"
                 }
             ]
         };
