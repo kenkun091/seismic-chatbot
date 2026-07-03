@@ -42,6 +42,7 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
+    images: List[str] = []
     success: bool
     error: Optional[str] = None
 
@@ -60,11 +61,17 @@ class PromptSearchResponse(BaseModel):
 
 @app.post("/chat", response_model=ChatResponse, dependencies=[Depends(enforce_chat_policy)])
 async def chat(request: ChatRequest):
-    """Process a chat message and return the response."""
+    """Process a chat message; return the narrated reply plus any plot paths."""
     try:
         session = base_chatbot.new_session()
-        response = session.process_single_input(request.message)
-        return ChatResponse(response=str(response), success=True)
+        result = session.process_single_input(request.message)
+        if isinstance(result, dict) and "reply" in result:
+            return ChatResponse(
+                response=str(result["reply"]),
+                images=[str(p) for p in result.get("images") or []],
+                success=True,
+            )
+        return ChatResponse(response=str(result), success=True)
     except Exception as e:
         return ChatResponse(response="", success=False, error=str(e))
 
