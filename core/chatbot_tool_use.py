@@ -739,7 +739,24 @@ within the constraints above."""
         if isinstance(result, bool):
             result = str(result)
         return result
-    
+
+    def _harvest_images(self, tool_result: Any, collected: List[str]) -> None:
+        """Collect .png paths from a tool result into `collected`.
+
+        Handles the two shapes tools produce: a plain path string (plot tools)
+        or a dict carrying an "image_path" key (workflow recipes, auto-chain
+        results). Deduped, order-preserving.
+        """
+        path = None
+        if isinstance(tool_result, str) and tool_result.endswith(".png"):
+            path = tool_result
+        elif isinstance(tool_result, dict):
+            p = tool_result.get("image_path")
+            if isinstance(p, str) and p.endswith(".png"):
+                path = p
+        if path is not None and path not in collected:
+            collected.append(path)
+
     def _workflow_image_output(self, tool_result):
         """Surface a composite plot path from a workflow's dict result, if present."""
         if isinstance(tool_result, dict):
