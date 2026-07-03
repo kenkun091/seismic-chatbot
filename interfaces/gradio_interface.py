@@ -14,6 +14,8 @@ def append_bot_response(chat_history, response):
         chat_history[-1][1] = response.get("reply") or ""
         for path in response.get("images") or []:
             chat_history.append([None, (path,)])
+    # Defensive: process_single_input always returns the dict above; these
+    # branches keep plain-string/legacy responses renderable (unit-tested).
     elif isinstance(response, str):
         chat_history[-1][1] = response
     else:

@@ -44,7 +44,7 @@ def test_chat_response_includes_reply_and_images(api):
     assert body["images"] == ["/tmp/a.png", "/tmp/b.png"]
 
 
-def test_chat_plain_string_response_has_empty_images(api):
+def test_chat_plain_string_response_has_empty_images(api, monkeypatch):
     from fastapi.testclient import TestClient
 
     class _LegacySession:
@@ -55,7 +55,7 @@ def test_chat_plain_string_response_has_empty_images(api):
         def new_session(self):
             return _LegacySession()
 
-    api.base_chatbot = _LegacyBot()
+    monkeypatch.setattr(api, "base_chatbot", _LegacyBot())
     client = TestClient(api.app)
     r = client.post("/chat", json={"message": "hi"},
                     headers={"X-API-Key": "sekret"})

@@ -192,3 +192,11 @@ def test_process_single_input_none_reply_gets_fallback_text(bot, monkeypatch):
     out = bot.process_single_input("x")
     assert out == {"reply": "I didn't get a response. Please try again.",
                    "images": []}
+
+
+def test_process_single_input_empty_reply_with_images_gets_caption(bot, monkeypatch):
+    monkeypatch.setattr(bot, "_is_knowledge_question", lambda text: False)
+    monkeypatch.setattr(bot, "_handle_tool_request",
+                        lambda text: {"reply": "", "images": ["/tmp/a.png"]})
+    assert bot.process_single_input("x") == {"reply": "Here are the results.",
+                                             "images": ["/tmp/a.png"]}

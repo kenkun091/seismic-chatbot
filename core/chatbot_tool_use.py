@@ -306,6 +306,10 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
                 reply = str(reply)
             elif reply is None:
                 reply = "I didn't get a response. Please try again."
+            if not reply and images:
+                # An empty final completion would render a blank bubble above
+                # the plots; give it a minimal caption instead.
+                reply = "Here are the results."
 
             return {"reply": reply, "images": images}
 
@@ -759,7 +763,9 @@ within the constraints above."""
 
         Handles the two shapes tools produce: a plain path string (plot tools)
         or a dict carrying an "image_path" key (workflow recipes, auto-chain
-        results). Deduped, order-preserving.
+        results). Deduped, order-preserving. Only a TOP-LEVEL "image_path" is
+        collected — nested dicts are not recursed (every current recipe returns
+        a single top-level composite plot; revisit if one ever nests plots).
         """
         path = None
         if isinstance(tool_result, str) and tool_result.endswith(".png"):
