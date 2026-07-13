@@ -3,8 +3,10 @@
 *.csv
 *.pdf
 *.html
+!interfaces/web_interface.html
 *.json
 *.txt
+!requirements.txt
 *.log
 .gradio
 
@@ -42,5 +44,8 @@ htmlcov/
 
 .ipynb_checkpoints/
 *.ipynb
+
+chroma_db/
+test_chroma_db/
 
 *.p

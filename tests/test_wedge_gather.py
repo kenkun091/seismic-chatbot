@@ -1,0 +1,132 @@
+import os
+
+import numpy as np
+import pytest
+
+from tools.wedge_tools import wedge_avo_gather, create_wedge_model
+
+GKW = dict(max_thickness=60, v1=2500, v2=3000, v3=3500, rho1=2.2, rho2=2.3, rho3=2.4)
+
+
+def test_gather_shape():
+    angles = [0, 10, 20, 30]
+    t, cube, params = wedge_avo_gather(angles=angles, **GKW)
+    assert cube.ndim == 3
+    assert cube.shape == (len(t), 61, len(angles))
+    assert params["num_traces"] == 61
+    assert params["angles"] == angles
+
+
+def test_single_angle_panel_matches_wedge_model():
+    # At a non-zero angle both paths use Shuey, so the gather panel must equal the
+    # single-angle wedge_model synthetic exactly (same geometry + same RC).
+    ang = 10
+    _, cube, _ = wedge_avo_gather(angles=[ang], **GKW)
+    _, _, synth, _ = create_wedge_model(incident_angle=ang, **GKW)
+    synth = np.asarray(synth)
+    assert cube.shape[:2] == synth.shape
+    assert np.allclose(cube[:, :, 0], synth, atol=1e-9)
+
+
+def test_gather_accepts_velocity_inversion():
+    _, cube, _ = wedge_avo_gather(
+        angles=[10, 20], max_thickness=50,
+        v1=3000, v2=2300, v3=3200, rho1=2.4, rho2=2.0, rho3=2.4,
+    )
+    assert cube.shape[2] == 2
+    assert np.all(np.isfinite(cube))
+
+
+def test_gather_rejects_vs_ge_vp():
+    with pytest.raises(ValueError):
+        wedge_avo_gather(angles=[10], vs1=3000, **GKW)  # vs1>=vp1=2500
+
+
+def test_gather_rejects_vs_equal_vp():
+    with pytest.raises(ValueError):
+        wedge_avo_gather(angles=[10], vs1=2500, **GKW)  # vs1 == vp1 (boundary)
+
+
+def test_gather_rejects_bad_angle():
+    with pytest.raises(ValueError):
+        wedge_avo_gather(angles=[95], **GKW)
+
+
+def test_gather_rejects_empty_angles():
+    with pytest.raises(ValueError):
+        wedge_avo_gather(angles=[], **GKW)
+
+
+from tools.wedge_tools import analyze_wedge_gather
+
+
+def test_analyze_gather_tuning_and_avo_keys():
+    angles = [0, 15, 30]
+    _, cube, params = wedge_avo_gather(angles=angles, **GKW)  # v2=3000, f=30 -> tuning ~25 m
+    out = analyze_wedge_gather(cube, params)
+    assert abs(out["tuning_thickness"] - 25.0) < 1e-6
+    assert len(out["per_angle"]) == 3
+    assert out["per_angle"][0]["angle"] == 0
+    assert set(out["avo"].keys()) == {"angles", "amplitudes"}
+    assert len(out["avo"]["amplitudes"]) == 3
+
+
+def test_analyze_gather_avo_varies_with_angle():
+    # Gas-sand contrast -> AVO amplitude must vary across angles (not constant).
+    angles = [0, 15, 30, 40]
+    _, cube, params = wedge_avo_gather(
+        angles=angles, max_thickness=60,
+        v1=3000, v2=2300, v3=3200, rho1=2.4, rho2=2.0, rho3=2.4)
+    out = analyze_wedge_gather(cube, params)
+    amps = out["avo"]["amplitudes"]
+    assert max(amps) - min(amps) > 1e-6
+
+
+from tools.wedge_tools import plot_wedge_gather
+
+
+def test_plot_gather_returns_png():
+    _, cube, params = wedge_avo_gather(angles=[0, 20, 40], **GKW)
+    path = plot_wedge_gather(cube, params)
+    assert isinstance(path, str) and path.endswith(".png")
+    assert os.path.exists(path)
+
+
+def test_gather_tools_registered():
+    from core.tool_registry import REGISTRY_BY_NAME, TOOL_FUNCTIONS, AUTO_PLOT
+    assert "wedge_avo_gather" in REGISTRY_BY_NAME
+    assert "plot_wedge_gather" in TOOL_FUNCTIONS
+    assert "analyze_wedge_gather" in TOOL_FUNCTIONS
+    assert AUTO_PLOT.get("wedge_avo_gather") == "plot_wedge_gather"
+
+
+def _bot():
+    from core.chatbot_tool_use import SeismicChatBotToolUse
+    return SeismicChatBotToolUse(llm_client=object(), knowledge_base=object())
+
+
+def test_gather_context_and_chaining():
+    bot = _bot()
+    t, cube, params = wedge_avo_gather(angles=[0, 20], **GKW)
+    result = (t, cube, params)
+    bot._update_context("wedge_avo_gather", {"angles": [0, 20]}, result)
+    stored = bot.context_manager.get_context("last_wedge_gather")
+    assert stored is not None and "gather" in stored and "parameters" in stored
+
+    chained = bot._handle_automatic_chaining("wedge_avo_gather", {"angles": [0, 20]}, result)
+    assert chained is not None and "image_path" in chained
+    assert chained["image_path"].endswith(".png")
+
+
+def test_gather_warns_on_aliasing():
+    # content = 3*200 = 600 Hz; Nyquist = 0.5/(4ms) = 125 Hz -> aliasing warning
+    with pytest.warns(UserWarning):
+        wedge_avo_gather(angles=[10], wavelet_freq=200, dt=4.0, **GKW)
+
+
+def test_gather_single_angle_avo():
+    _, cube, params = wedge_avo_gather(angles=[20], **GKW)
+    out = analyze_wedge_gather(cube, params)
+    assert cube.shape[2] == 1
+    assert len(out["avo"]["amplitudes"]) == 1
+    assert np.isfinite(out["avo"]["amplitudes"][0])

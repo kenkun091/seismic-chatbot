@@ -228,6 +228,58 @@ class InputParser:
                 velocities[f'v{i}'] = float(match.group(1))
         return velocities
 
+    def extract_incident_angles(self, text: str) -> List[float]:
+        """
+        Extract incident angles from text for wedge modeling.
+        
+        Args:
+            text: Input text to extract incident angles from
+            
+        Returns:
+            List[float]: List of extracted incident angles in degrees
+        """
+        text = text.lower()
+        angles = []
+        
+        # Pattern for incident angle extraction
+        patterns = [
+            # Single angles
+            r'incident\s*angle\s*[=:]\s*(\d+(?:\.\d+)?)',
+            r'incident\s*angle\s+(\d+(?:\.\d+)?)\s*(?:degrees?|deg)?',
+            r'angle\s*[=:]\s*(\d+(?:\.\d+)?)\s*(?:degrees?|deg)?',
+            r'angle\s+(\d+(?:\.\d+)?)\s*(?:degrees?|deg)?',
+            r'offset\s*angle\s*[=:]\s*(\d+(?:\.\d+)?)',
+            r'offset\s*angle\s+(\d+(?:\.\d+)?)\s*(?:degrees?|deg)?',
+            # Multiple angles in brackets
+            r'incident\s*angles?\s*\[([\d\.,\s]+)\]',
+            r'angles?\s*\[([\d\.,\s]+)\]\s*(?:degrees?|deg)?',
+            r'offset\s*angles?\s*\[([\d\.,\s]+)\]'
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, text)
+            for match in matches:
+                try:
+                    # Check if this is a bracket pattern (multiple angles)
+                    if ',' in match or ' ' in match:
+                        # Parse multiple angles from bracket notation
+                        angle_values = re.split(r'[\s,]+', match.strip())
+                        for angle_str in angle_values:
+                            if angle_str.strip():
+                                angle = float(angle_str.strip())
+                                if 0 <= angle <= 90:  # Reasonable angle range
+                                    angles.append(angle)
+                    else:
+                        # Single angle
+                        angle = float(match)
+                        if 0 <= angle <= 90:  # Reasonable angle range
+                            angles.append(angle)
+                except ValueError:
+                    continue
+        
+        # Remove duplicates and return
+        return list(set(angles))
+
     def extract_densities(self, text: str) -> Dict[str, float]:
         """
         Extract densities from text and map to rho1, rho2, rho3.

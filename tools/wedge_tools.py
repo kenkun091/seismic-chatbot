@@ -1,10 +1,16 @@
 import math
+import warnings
 import numpy as np
 import scipy.signal
 
 import os
 
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple, Dict, Union
+
+# Import from avo_tools
+from .avo_tools import shuey_reflectivity
+from .path_safety import safe_export_path
+from .physics_guards import require_elastic_medium, require_positive, warn_if_aliased, warn_if_outside, angles_error
 
 import matplotlib
 matplotlib.use('Agg')
@@ -92,7 +98,7 @@ def resample(t, trc, dt_new):
     freq_new = np.fft.rfftfreq(nfft_new, dt_new*0.001)
 
     re = np.interp(freq_new, freq, spec.real, left = 0, right =0)
-    im = np.interp(freq_new, freq, spec.img, left =0, right = 0)
+    im = np.interp(freq_new, freq, spec.imag, left =0, right = 0)
 
     spec_intp = re + 1j*im
 
@@ -171,7 +177,7 @@ def choose_pick_mode(data, interface_t, halfwin, t0, dt):
     avg_amp /= last_n
 
     if abs(avg_amp) < AMP_THRESHOLD:
-        return 'zero-crossing';
+        return 'zero-crossings';
     elif avg_amp >= AMP_THRESHOLD:
         return 'peaks';
     else:
@@ -203,6 +209,7 @@ def pick_zero_crossings(data, ref_interface, top_limit, base_limit, t0, dt):
             it1 += 1
         if pick:
             tpicks[itr] = pick
+    return tpicks
 
 
 def peak_peaks_or_troughs(data, top_limit, base_limit, t0, dt, pickmode):
@@ -261,7 +268,7 @@ def pick_interface_and_amp(data, interface1_t, interface2_t, t0, nt, dt):
         hor3_tpicks = np.empty_like(interface1_t)
         for itr in range(ntraces):
             hor3_tpicks[itr] = t_op(data[it_top[itr]:it_base[itr], itr]) + it_top[itr]
-            amp_picks = amp_op(data[it_top[itr]:it_base[itr], itr])
+            amp_picks[itr] = amp_op(data[it_top[itr]:it_base[itr], itr])
         hor3_tpicks = t0 + hor3_tpicks*dt
     else:
         top_limit = np.full_like(interface1_t, t0)
@@ -275,7 +282,7 @@ def pick_interface_and_amp(data, interface1_t, interface2_t, t0, nt, dt):
 
     return hor1_tpicks, hor2_tpicks, hor3_tpicks, amp_picks
 
-def create_figure():
+def create_figure(figsize=(12, 14)):
     params = {
         'legend.fontsize': 'x-large',
         'axes.labelsize': 16,
@@ -285,13 +292,13 @@ def create_figure():
     }
     plt.rcParams.update(params)
 
-    fig, axes = plt.subplots(3, 1, figsize=(12, 14))
+    fig, axes = plt.subplots(3, 1, figsize=figsize)
 
     return fig, axes
 
 def make_plot(zunit, data, wavelet_label, vp_layers, rho_layers, thickness, \
     interface1_t, interface2_t, t0, nt, dt, z_min, z_max, dz, gain, plotpadtime, thickness_domain,\
-        fig_fname, csv_fname=''):
+        fig_fname, csv_fname='', figsize=(12, 14)):
     
     hor1_tpicks, hor2_tpicks, hor3_tpicks, amp_picks = pick_interface_and_amp(data, interface1_t, interface2_t, t0, nt, dt)
     thickness_apparent_t = hor2_tpicks - hor1_tpicks
@@ -306,7 +313,7 @@ def make_plot(zunit, data, wavelet_label, vp_layers, rho_layers, thickness, \
         thickness_unit = zunit
     
     excursion = gain*dz
-    fig, axes = create_figure()
+    fig, axes = create_figure(figsize)
 
     ax0, ax1, ax2 = axes
     layer_labels = []
@@ -419,7 +426,7 @@ def make_plot(zunit, data, wavelet_label, vp_layers, rho_layers, thickness, \
         np.savetxt(csv_fname, curves, fmt = '%g',delimiter = ',', header = header, comments = '')
 
 def make_symmetric_wavelet(t, wavelet):
-    if np.alltrue(t<0) or np.alltrue(t>=0):
+    if np.all(t<0) or np.all(t>=0):
         raise Exception('Input wavelet needs to be sampled at both negative and positive time values.')
     
     nt_positive = (t>0).sum()
@@ -435,6 +442,46 @@ def make_symmetric_wavelet(t, wavelet):
         wavelet = np.hstack([wavelet, np.zeros(ndiff)])
 
     return t, wavelet
+
+def parse_and_prep_wavelet(wavelet_source, dt):
+    """
+    Build a (time_ms, amplitudes) wavelet from a user-supplied source.
+
+    wavelet_source may be:
+      - a comma/space/newline-separated numeric string,
+      - a list/tuple/np.ndarray of numbers,
+      - a path to a .txt/.csv file with one number per line or a delimited row.
+
+    Returns (t, wavelet) where t is centered on zero with spacing dt.
+    Raises ValueError on unparseable input or fewer than 2 samples.
+    """
+    if isinstance(wavelet_source, (list, tuple, np.ndarray)):
+        arr = np.asarray(wavelet_source, dtype=float)
+    elif isinstance(wavelet_source, str) and os.path.isfile(wavelet_source):
+        try:
+            arr = np.genfromtxt(wavelet_source, delimiter=",").ravel()
+            arr = arr[np.isfinite(arr)].astype(float)
+        except Exception as e:
+            raise ValueError(f"Could not read wavelet file: {e}")
+    elif isinstance(wavelet_source, str):
+        tokens = [tok for tok in wavelet_source.replace(",", " ").split() if tok]
+        try:
+            arr = np.array([float(tok) for tok in tokens], dtype=float)
+        except ValueError:
+            raise ValueError("Custom wavelet string must contain only numbers.")
+    else:
+        raise ValueError(f"Unsupported wavelet source type: {type(wavelet_source)}")
+
+    if arr.size < 2:
+        raise ValueError("Custom wavelet must have at least 2 samples.")
+    if not np.isfinite(arr).all():
+        raise ValueError("Custom wavelet contains non-finite values.")
+
+    nt = arr.size
+    # t spacing uses dt directly, centered on zero (matches ricker/ormsby convention).
+    t = (np.arange(nt) - nt // 2) * dt
+    return t, arr
+
 
 def gen_wavelet(dt, wv_type, ricker_freq, ormsby_freq, wavelet_str, wavelet_fname, phase_rot, wavelet_length=500):
     if wv_type == 'ricker':
@@ -542,7 +589,7 @@ def plot_wavelet(dt, wv_type, ricker_freq, ormsby_freq, wavelet_str, wavelet_fna
     plt.savefig(fig_fname)
     plt.close()
 
-def wedge_model(zunit, max_thickness, wv_type, ricker_freq, ormsby_freq, wavelet_str, wavelet_fname, phase_rot, vp1, vp2, vp3, rho1, rho2, rho3, gain, plotpadtime, thickness_domain, fig_fname, csv_fname):
+def wedge_model(zunit, max_thickness, wv_type, ricker_freq, ormsby_freq, wavelet_str, wavelet_fname, phase_rot, vp1, vp2, vp3, rho1, rho2, rho3, gain, plotpadtime, thickness_domain, fig_fname, csv_fname, vs1=None, vs2=None, vs3=None, incident_angle=0, num_traces=61, dt=0.1):
     """
     Creates a wedge model for seismic analysis.
     
@@ -562,22 +609,43 @@ def wedge_model(zunit, max_thickness, wv_type, ricker_freq, ormsby_freq, wavelet
     - thickness_domain: Domain for thickness calculation ('time' or 'depth')
     - fig_fname: Output figure filename
     - csv_fname: Output CSV filename for curves
+    - vs1, vs2, vs3: S-wave velocities for the three layers (units/s). If None, estimated as vp/2
+    - incident_angle: Incident angle(s) in degrees for Shuey calculation. Can be a single value or a list
     """
     # Create arrays for layer properties
     vp_layers = [vp1, vp2, vp3]
     rho_layers = [rho1, rho2, rho3]
-    
+    vs_layers = [vs1 if vs1 is not None else vp1/2.0,
+                vs2 if vs2 is not None else vp2/2.0,
+                vs3 if vs3 is not None else vp3/2.0]
+
+    # --- Physical-validity guards ---
+    require_positive(max_thickness, "max_thickness")
+    require_positive(dt, "dt")
+    if num_traces < 2:
+        raise ValueError(f"num_traces must be >= 2 (got {num_traces})")
+    for _i in range(3):
+        require_elastic_medium(vp_layers[_i], vs_layers[_i], rho_layers[_i], f"layer {_i + 1}")
+        warn_if_outside(vp_layers[_i], 300, 8000, f"vp layer {_i + 1}", "m/s")
+    # Nyquist / aliasing warning (dt is in ms here -> convert to seconds)
+    if wv_type == 'ormsby' and ormsby_freq:
+        _content_hz = float(ormsby_freq.split(',')[-1])
+    elif ricker_freq:
+        _content_hz = 3.0 * ricker_freq
+    else:
+        _content_hz = 0.0
+    warn_if_aliased(_content_hz, dt / 1000.0, "wedge wavelet")
+
     # Calculate acoustic impedance for each layer
     imp_layers = [vp_layers[i]*rho_layers[i] for i in range(3)]
 
     # Set up model geometry
     z_min = 0
     z_max = max_thickness
-    ntraces = 61  # Number of traces in the model
+    ntraces = num_traces  # Number of traces in the model (from caller)
     dz = (z_max - z_min)/(ntraces - 1)  # Trace spacing
 
-    # Set time sampling interval
-    dt = 0.1  # ms
+    # Time sampling interval (ms) is taken from the dt argument (default 0.1 ms)
 
     # Generate wavelet based on specified parameters
     t, wavelet, wavelet_label = gen_wavelet(dt, wv_type, ricker_freq, ormsby_freq, wavelet_str, wavelet_fname, phase_rot, wavelet_length=256.0)
@@ -598,8 +666,42 @@ def wedge_model(zunit, max_thickness, wv_type, ricker_freq, ormsby_freq, wavelet
     rc_model = np.zeros((nt, ntraces))
 
     # Calculate reflection coefficients at layer interfaces
-    rc1 = (imp_layers[1] - imp_layers[0])/(imp_layers[1] + imp_layers[0])  # Upper interface
-    rc2 = (imp_layers[2] - imp_layers[1])/(imp_layers[2] + imp_layers[1])  # Lower interface
+    if incident_angle != 0:
+        # Use Shuey approximation for angle-dependent reflectivity
+        if isinstance(incident_angle, (int, float)):
+            angles = [incident_angle]
+        else:
+            angles = incident_angle
+            
+        # Calculate reflectivity for upper interface using Shuey approximation
+        rc1_array = shuey_reflectivity(
+            vp1=vp_layers[0], vs1=vs_layers[0], rho1=rho_layers[0],
+            vp2=vp_layers[1], vs2=vs_layers[1], rho2=rho_layers[1],
+            angles=angles
+        )
+        
+        # Calculate reflectivity for lower interface using Shuey approximation
+        rc2_array = shuey_reflectivity(
+            vp1=vp_layers[1], vs1=vs_layers[1], rho1=rho_layers[1],
+            vp2=vp_layers[2], vs2=vs_layers[2], rho2=rho_layers[2],
+            angles=angles
+        )
+        
+        # The wedge is a single-angle product. Averaging reflection coefficients
+        # across angles is not physically meaningful, so use the first angle and
+        # warn if several were supplied (model each angle separately for a gather).
+        if len(angles) > 1:
+            warnings.warn(
+                f"wedge_model received {len(angles)} angles; using only the first "
+                f"({angles[0]}°). Model each angle separately for an angle gather.",
+                stacklevel=2,
+            )
+        rc1 = rc1_array[0]
+        rc2 = rc2_array[0]
+    else:
+        # Default to simple acoustic impedance method
+        rc1 = (imp_layers[1] - imp_layers[0])/(imp_layers[1] + imp_layers[0])  # Upper interface
+        rc2 = (imp_layers[2] - imp_layers[1])/(imp_layers[2] + imp_layers[1])  # Lower interface
 
     # Create thickness array for the wedge
     thickness = np.linspace(z_min, z_max, ntraces)
@@ -673,15 +775,26 @@ def wedge_model(zunit, max_thickness, wv_type, ricker_freq, ormsby_freq, wavelet
     make_plot(
         zunit, data, wavelet_label, vp_layers, rho_layers, thickness,
         interface1_t, interface2_t, t0, nt, dt, z_min, z_max, dz, gain,
-        plotpadtime, thickness_domain, fig_fname, ''
+        plotpadtime, thickness_domain, fig_fname, csv_fname
     )
+
+    if wv_type == 'ricker':
+        _wavelet_freq = ricker_freq
+    elif wv_type == 'ormsby' and ormsby_freq:
+        # Dominant (peak) frequency of an Ormsby wavelet is ~ the centre of the
+        # passband, (f2+f3)/2 — NOT the low-cut corner f1.
+        _corners = [float(x) for x in ormsby_freq.split(',')]
+        _wavelet_freq = (_corners[1] + _corners[2]) / 2.0 if len(_corners) >= 4 else _corners[0]
+    else:
+        _wavelet_freq = ricker_freq  # custom: no extractable freq, use supplied value
 
     return t, rc_model, data, {
         'max_thickness': max_thickness,
         'v1': vp1, 'v2': vp2, 'v3': vp3,
         'rho1': rho1, 'rho2': rho2, 'rho3': rho3,
+        'vs1': vs1, 'vs2': vs2, 'vs3': vs3,
         'rc1': rc1, 'rc2': rc2,
-        'wavelet_freq': ricker_freq if wv_type == 'ricker' else float(ormsby_freq.split(',')[0]),
+        'wavelet_freq': _wavelet_freq,
         'dt': dt,
         'num_traces': ntraces,
         'wavelet_label': wavelet_label,
@@ -693,7 +806,8 @@ def wedge_model(zunit, max_thickness, wv_type, ricker_freq, ormsby_freq, wavelet
         'nt': nt,
         'dz': dz,
         'gain': gain,
-        'plotpadtime': plotpadtime
+        'plotpadtime': plotpadtime,
+        'incident_angle': incident_angle
     }, fig_fname
 
 def create_wedge_model(
@@ -714,11 +828,52 @@ def create_wedge_model(
     gain: float = 1.0,
     plotpadtime: float = 50.0,
     thickness_domain: str = 'depth',
-    zunit: str = 'm'
+    zunit: str = 'm',
+    vs1: Optional[float] = None,
+    vs2: Optional[float] = None,
+    vs3: Optional[float] = None,
+    incident_angle: Union[float, list] = 0,
+    export_path: Optional[str] = None,
+    wavelet_str: str = ''
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Dict]:
     """
     Create a wedge model with specified parameters and return the path to the plot.
+    
+    Args:
+        max_thickness: Maximum thickness of the wedge
+        v1, v2, v3: P-wave velocities for the three layers (units/s)
+        rho1, rho2, rho3: Densities for the three layers (g/cc)
+        num_traces: Number of traces in the model
+        dt: Time sampling interval (ms)
+        wavelet_freq: Frequency for Ricker wavelet (Hz)
+        wavelet_length: Length of the wavelet (ms)
+        phase_rot: Phase rotation in degrees
+        wv_type: Wavelet type ('ricker', 'ormsby', or custom)
+        ormsby_freq: Comma-separated frequencies for Ormsby wavelet
+        gain: Gain factor for display
+        plotpadtime: Padding time for plots (ms)
+        thickness_domain: Domain for thickness calculation ('time' or 'depth')
+        zunit: Unit for depth/thickness (e.g., 'm', 'ft')
+        vs1, vs2, vs3: S-wave velocities for the three layers (units/s). If None, estimated as vp/2
+        incident_angle: Incident angle(s) in degrees for Shuey calculation. Can be a single value or a list
+        export_path: Optional path for CSV export of tuning curves
+        wavelet_str: Custom wavelet as a comma/space-separated numeric string (used when wv_type='custom')
+
+    Returns:
+        Tuple containing time array, model, synthetic data, and parameters dictionary
     """
+    # Confine LLM/user-supplied export_path to a sandbox directory so a tool call
+    # cannot write CSV to an arbitrary filesystem location (path traversal / overwrite).
+    safe_csv = ''
+    if export_path:
+        import tempfile
+        export_base = os.environ.get(
+            "SEISMIC_EXPORT_DIR", os.path.join(tempfile.gettempdir(), "seismic_exports")
+        )
+        os.makedirs(export_base, exist_ok=True)
+        safe_csv = safe_export_path(export_path, export_base)
+        os.makedirs(os.path.dirname(safe_csv), exist_ok=True)
+
     # Call the internal wedge_model function that does the work
     time_array, model, synthetic, parameters, _ = wedge_model(
         zunit=zunit,
@@ -726,7 +881,7 @@ def create_wedge_model(
         wv_type=wv_type,
         ricker_freq=wavelet_freq,
         ormsby_freq=ormsby_freq,
-        wavelet_str='',
+        wavelet_str=wavelet_str,
         wavelet_fname='',
         phase_rot=phase_rot,
         vp1=v1,
@@ -739,22 +894,41 @@ def create_wedge_model(
         plotpadtime=plotpadtime,
         thickness_domain=thickness_domain,
         fig_fname='',
-        csv_fname=''
+        csv_fname=safe_csv or '',
+        vs1=vs1,
+        vs2=vs2,
+        vs3=vs3,
+        incident_angle=incident_angle,
+        num_traces=num_traces,
+        dt=dt,
     )
     
     return time_array, model, synthetic, parameters
 
 def plot_wedge_model(
     synthetic_data: np.ndarray,
-    parameters: Dict
+    parameters: Dict,
+    figsize: Optional[Tuple[float, float]] = None
 ) -> str:
     """
     Plot a wedge model and return the path to the plot.
+    
+    Args:
+        synthetic_data: 2D array of synthetic data
+        parameters: Dictionary of model parameters
+        figsize: Optional figure size as (width, height) in inches. Default is (12, 14).
+        
+    Returns:
+        str: Path to the generated plot file
     """
     import tempfile
     
     fig_fd, fig_fname = tempfile.mkstemp(suffix=".png")
     os.close(fig_fd)
+    
+    # Use default figsize if not provided
+    if figsize is None:
+        figsize = (12, 14)
     
     make_plot(
         zunit=parameters['zunit'],
@@ -775,7 +949,8 @@ def plot_wedge_model(
         plotpadtime=parameters['plotpadtime'],
         thickness_domain=parameters['thickness_domain'],
         fig_fname=fig_fname,
-        csv_fname=''
+        csv_fname='',
+        figsize=figsize
     )
     
     return fig_fname
@@ -827,8 +1002,33 @@ def analyze_wedge_model(
     
     if show_plot:
         plot_wedge_analysis(time_array, synthetic_data, analysis, parameters)
-    
+
     return analysis
+
+
+def analyze_wedge(synthetic_data, parameters):
+    """
+    Registry-facing wedge analysis: tuning thickness, tuning amplitude,
+    resolution limit, and the amplitude-vs-thickness curve. No plotting.
+    """
+    synthetic_data = np.asarray(synthetic_data, dtype=float)
+    v2 = parameters["v2"]
+    freq = parameters["wavelet_freq"]
+    if freq <= 0:
+        raise ValueError(f"wavelet_freq must be positive, got {freq}")
+    tuning_thickness = v2 / (4.0 * freq)
+    max_amplitudes = np.max(np.abs(synthetic_data), axis=0)
+    num_traces = synthetic_data.shape[1]
+    thicknesses = np.linspace(0, parameters["max_thickness"], num_traces)
+    tuning_idx = int(np.argmax(max_amplitudes))
+    return {
+        "tuning_thickness": tuning_thickness,
+        "tuning_amplitude": float(max_amplitudes[tuning_idx]),
+        "resolution_limit": tuning_thickness / 2.0,
+        "max_amplitudes": max_amplitudes.tolist(),
+        "thicknesses": thicknesses.tolist(),
+    }
+
 
 def plot_wedge_analysis(
     time_array: np.ndarray,
@@ -872,3 +1072,194 @@ def plot_wedge_analysis(
     
     plt.tight_layout()
     plt.show()
+
+
+def wedge_avo_gather(
+    max_thickness, v1, v2, v3, rho1, rho2, rho3, angles,
+    vs1=None, vs2=None, vs3=None,
+    wavelet_freq=30.0, num_traces=61, dt=0.1,
+    wv_type='ricker', ormsby_freq=None,
+    phase_rot=0.0, plotpadtime=50.0, zunit='m',
+):
+    """Wedge AVO angle gather: the synthetic wedge computed independently per
+    incidence angle (Shuey reflectivity), returned as a 3-D cube
+    (nt x num_traces x nangles). The single-angle wedge_model is left untouched.
+
+    Returns (time_array, gather, parameters).
+    """
+    angles = list(angles)
+    if not angles:
+        raise ValueError("angles must be a non-empty list of incidence angles (deg).")
+
+    vp_layers = [v1, v2, v3]
+    rho_layers = [rho1, rho2, rho3]
+    vs_layers = [vs1 if vs1 is not None else v1 / 2.0,
+                 vs2 if vs2 is not None else v2 / 2.0,
+                 vs3 if vs3 is not None else v3 / 2.0]
+
+    # --- Physical-validity guards (shared helpers) ---
+    require_positive(max_thickness, "max_thickness")
+    require_positive(dt, "dt")
+    if num_traces < 2:
+        raise ValueError(f"num_traces must be >= 2 (got {num_traces})")
+    for _i in range(3):
+        require_elastic_medium(vp_layers[_i], vs_layers[_i], rho_layers[_i], f"layer {_i + 1}")
+        warn_if_outside(vp_layers[_i], 300, 8000, f"vp layer {_i + 1}", "m/s")
+    _ang_err = angles_error(angles)
+    if _ang_err:
+        raise ValueError(_ang_err)
+    if wv_type == 'ormsby' and ormsby_freq:
+        _content_hz = float(ormsby_freq.split(',')[-1].strip())
+    elif wavelet_freq:
+        _content_hz = 3.0 * wavelet_freq
+    else:
+        _content_hz = 0.0
+    warn_if_aliased(_content_hz, dt / 1000.0, "wedge gather wavelet")
+
+    # --- Geometry (built once; independent of angle; mirrors wedge_model) ---
+    z_min = 0
+    z_max = max_thickness
+    ntraces = num_traces
+    t, wavelet, wavelet_label = gen_wavelet(
+        dt, wv_type, wavelet_freq, ormsby_freq, '', '', phase_rot, wavelet_length=256.0)
+    wavelet_length = t[-1] - t[0] + dt
+    pad_time = plotpadtime
+    model_time = 2 * pad_time + 2000 * (z_max - z_min) / vp_layers[1]
+    if model_time < wavelet_length:
+        pad_time += (wavelet_length - model_time) / 2.0 + dt
+    thickness = np.linspace(z_min, z_max, ntraces)
+    t_ref = 300
+    interface1_t = t_ref + thickness * 0
+    interface2_t = t_ref + thickness * 2000 / vp_layers[1]
+    max_interface_time = max(interface1_t.max(), interface2_t.max())
+    min_interface_time = min(interface1_t.min(), interface2_t.min())
+    required_time_range = max_interface_time - min_interface_time + 2 * pad_time
+    nt = int(round(2 * pad_time + 2000 * (z_max - z_min) / vp_layers[1] / dt))
+    nt = max(nt, int(round(required_time_range / dt)) + 100)
+    t0 = min_interface_time - pad_time
+
+    # Build the model-domain time axis (length nt, starting at t0)
+    t_model = t0 + np.arange(nt) * dt
+
+    # --- Per-angle reflectivity + convolution ---
+    nangles = len(angles)
+    gather = np.zeros((nt, ntraces, nangles))
+    for k, ang in enumerate(angles):
+        rc1 = shuey_reflectivity(
+            vp1=vp_layers[0], vs1=vs_layers[0], rho1=rho_layers[0],
+            vp2=vp_layers[1], vs2=vs_layers[1], rho2=rho_layers[1], angles=[ang])[0]
+        rc2 = shuey_reflectivity(
+            vp1=vp_layers[1], vs1=vs_layers[1], rho1=rho_layers[1],
+            vp2=vp_layers[2], vs2=vs_layers[2], rho2=rho_layers[2], angles=[ang])[0]
+        rc_model = np.zeros((nt, ntraces))
+        for itr in range(ntraces):
+            idx1 = int(round((interface1_t[itr] - t0) / dt))
+            # +1 matches the create_wedge_model lower-interface convention (one-sample shift)
+            idx2 = int(round((interface2_t[itr] - t0) / dt)) + 1
+            if 0 <= idx1 < nt:
+                rc_model[idx1, itr] = rc1
+            if 0 <= idx2 < nt:
+                rc_model[idx2, itr] = rc2
+        gather[:, :, k] = np.apply_along_axis(
+            lambda _tr: scipy.signal.convolve(_tr, wavelet, mode='same'), axis=0, arr=rc_model)
+
+    parameters = {
+        'angles': angles,
+        'v2': v2,
+        'max_thickness': max_thickness,
+        'num_traces': ntraces,
+        'dt': dt,
+        'wavelet_freq': wavelet_freq,
+        'interface1_t': interface1_t,
+        't0': t0,
+        'nt': nt,
+        'zunit': zunit,
+        'wavelet_label': wavelet_label,
+    }
+    return t_model, gather, parameters
+
+
+def analyze_wedge_gather(gather, parameters):
+    """Analyze a wedge AVO gather: per-angle tuning thickness/amplitude and the
+    AVO response (top-interface amplitude vs angle at the isolated max-thickness
+    trace). Returns a dict; no plotting."""
+    gather = np.asarray(gather, dtype=float)
+    nt, ntraces, nangles = gather.shape
+    v2 = parameters["v2"]
+    freq = parameters["wavelet_freq"]
+    if freq <= 0:
+        raise ValueError(f"wavelet_freq must be positive, got {freq}")
+    angles = list(parameters["angles"])
+    max_thickness = parameters["max_thickness"]
+    thickness = np.linspace(0, max_thickness, ntraces)
+    tuning_thickness = v2 / (4.0 * freq)
+
+    per_angle = []
+    for k, ang in enumerate(angles):
+        amp_vs_thickness = np.max(np.abs(gather[:, :, k]), axis=0)
+        idx = int(np.argmax(amp_vs_thickness))
+        per_angle.append({
+            "angle": ang,
+            "tuning_thickness_observed": float(thickness[idx]),
+            "tuning_amplitude": float(amp_vs_thickness[idx]),
+        })
+
+    # AVO at the isolated top interface (max-thickness trace), windowed +/- one
+    # dominant period around interface1_t so the base reflection is excluded.
+    dt = parameters["dt"]
+    t0 = parameters["t0"]
+    interface1_t = np.asarray(parameters["interface1_t"], dtype=float)
+    top_t = float(interface1_t[-1])
+    i_center = int(round((top_t - t0) / dt))
+    i_half = int(round((1000.0 / freq) / dt))
+    i_lo = max(0, i_center - i_half)
+    i_hi = min(nt, i_center + i_half + 1)
+    avo_amps = [float(np.max(np.abs(gather[i_lo:i_hi, -1, k]))) for k in range(nangles)]
+
+    return {
+        "angles": angles,
+        "tuning_thickness": float(tuning_thickness),
+        "per_angle": per_angle,
+        "avo": {"angles": angles, "amplitudes": avo_amps},
+    }
+
+
+def plot_wedge_gather(gather, parameters, figsize=None):
+    """Plot a wedge AVO gather: amplitude-vs-thickness per angle (top panel) and
+    amplitude-vs-angle at the isolated max-thickness trace (bottom panel).
+    Returns the PNG path."""
+    import tempfile
+
+    gather = np.asarray(gather, dtype=float)
+    nt, ntraces, nangles = gather.shape
+    angles = list(parameters["angles"])
+    max_thickness = parameters["max_thickness"]
+    zunit = parameters.get("zunit", "m")
+    thickness = np.linspace(0, max_thickness, ntraces)
+    analysis = analyze_wedge_gather(gather, parameters)
+
+    if figsize is None:
+        figsize = (10, 10)
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=figsize)
+
+    for k, ang in enumerate(angles):
+        amp_vs_thickness = np.max(np.abs(gather[:, :, k]), axis=0)
+        ax1.plot(thickness, amp_vs_thickness, label=f"{ang}°")
+    ax1.set_xlabel(f"Thickness ({zunit})")
+    ax1.set_ylabel("Amplitude")
+    ax1.set_title("Tuning curves by incidence angle")
+    ax1.grid(True, alpha=0.3)
+    ax1.legend(title="angle")
+
+    ax2.plot(analysis["avo"]["angles"], analysis["avo"]["amplitudes"], "o-")
+    ax2.set_xlabel("Incidence angle (deg)")
+    ax2.set_ylabel("Top-interface amplitude")
+    ax2.set_title("AVO at maximum thickness (isolated top interface)")
+    ax2.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    fig_fd, fig_fname = tempfile.mkstemp(suffix=".png")
+    os.close(fig_fd)
+    plt.savefig(fig_fname)
+    plt.close()
+    return fig_fname

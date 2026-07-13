@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Dict, Any, Optional, List
 from .llm_client import LLMClient
 from .tool_manager import ToolManager
@@ -10,13 +11,29 @@ import re
 logger = logging.getLogger(__name__)
 
 class SeismicChatBot:
-    def __init__(self):
-        """Initialize the seismic chatbot with all required components."""
-        self.llm_client = LLMClient()
-        self.tool_manager = ToolManager()
-        self.context_manager = ContextManager()
-        self.input_parser = InputParser()
-        self.knowledge_base = KnowledgeBase()
+    def __init__(self, llm_client=None, tool_manager=None, input_parser=None, knowledge_base=None):
+        """Initialize the seismic chatbot.
+
+        The LLM client, tool manager, input parser, and knowledge base are
+        conversation-stateless and may be injected (shared across sessions). The
+        context manager holds per-conversation state and is ALWAYS fresh. Use
+        ``new_session()`` to spawn an isolated session reusing shared components.
+        """
+        self.llm_client = llm_client or LLMClient()
+        self.tool_manager = tool_manager or ToolManager()
+        self.input_parser = input_parser or InputParser()
+        self.knowledge_base = knowledge_base or KnowledgeBase()
+        self.context_manager = ContextManager()  # per-session, never shared
+
+    def new_session(self) -> "SeismicChatBot":
+        """Return a session-isolated chatbot sharing the heavy, stateless
+        components but owning a fresh conversation context."""
+        return SeismicChatBot(
+            llm_client=self.llm_client,
+            tool_manager=self.tool_manager,
+            input_parser=self.input_parser,
+            knowledge_base=self.knowledge_base,
+        )
 
     def process_input(self, user_input: str) -> str:
         """
@@ -66,11 +83,12 @@ class SeismicChatBot:
    - "unclear": Intent is ambiguous
 
 2. If INTENT is "action", also determine:
-   - TOOL: Which tool to use (make_ricker, plot_ricker, wedge_model, zoeppritz_reflectivity, shuey_reflectivity, avo_fluid_indicator)
+   - TOOL: Which tool to use (make_ricker, plot_ricker, wedge_model, zoeppritz_reflectivity, shuey_reflectivity)
    - PARAMETERS: Extract specific parameters from the text
 
 **Parameter Extraction Guidelines:**
-- For wedge_model: Extract max_thickness, v1, v2, v3, rho1, rho2, rho3
+- For wedge_model: Extract max_thickness, v1, v2, v3, rho1, rho2, rho3, vs1, vs2, vs3, incident_angle
+- For plot_wedge_model: Extract figsize for enlargement (e.g., [18, 21] for larger figures)
 - For make_ricker: Extract frequency, dt, time_length
 - For AVO tools: Extract vp1, vs1, rho1, vp2, vs2, rho2, angles, intercept, gradient
 - Use synonyms and context (e.g., "depth" for "thickness", "speed" for "velocity", "density" for "rho")
@@ -96,7 +114,9 @@ Return response as JSON with this structure:
 
         try:
             llm_response = self.llm_client.get_completion(system_prompt, user_input)
-            parsed_result = self.input_parser.extract_json_from_response(llm_response)
+            # Extract content from the response dict
+            llm_content = llm_response.get("content", "") if isinstance(llm_response, dict) else str(llm_response)
+            parsed_result = self.input_parser.extract_json_from_response(llm_content)
             
             # Validate and enhance the parsed result
             if parsed_result.get('intent') == 'action':
@@ -124,13 +144,18 @@ Return response as JSON with this structure:
         
         # Use rule-based extraction to supplement LLM results
         if tool == 'wedge_model':
-            # Extract velocities and densities using rules
+            # Extract velocities, densities, and incident angles using rules
             velocities = self.input_parser.extract_velocities(user_input)
             densities = self.input_parser.extract_densities(user_input)
+            incident_angles = self.input_parser.extract_incident_angles(user_input)
             
             # Merge with LLM results (LLM takes precedence)
             parameters.update(velocities)
             parameters.update(densities)
+            
+            # Add incident angle if found
+            if incident_angles:
+                parameters['incident_angle'] = incident_angles[0]  # Use first angle
             
             # Extract thickness if missing
             if 'max_thickness' not in parameters:
@@ -158,6 +183,26 @@ Return response as JSON with this structure:
                     if param not in parameters and param in last_params:
                         parameters[param] = last_params[param]
                         parsed_result['reasoning'] = parsed_result.get('reasoning', '') + f" Using {param}={last_params[param]} from previous wedge model."
+        
+        elif tool == 'plot_wedge_model':
+            # Extract figsize for enlargement requests
+            figsize_patterns = [
+                r'enlarge.*?(\d+)\s*[x×]\s*(\d+)',
+                r'bigger.*?(\d+)\s*[x×]\s*(\d+)',
+                r'larger.*?(\d+)\s*[x×]\s*(\d+)',
+                r'figsize.*?\[(\d+),\s*(\d+)\]',
+                r'size.*?(\d+)\s*[x×]\s*(\d+)',
+                r'(\d+)\s*[x×]\s*(\d+).*?(?:inch|in)'
+            ]
+            
+            for pattern in figsize_patterns:
+                match = re.search(pattern, user_input.lower())
+                if match:
+                    width = float(match.group(1))
+                    height = float(match.group(2))
+                    parameters['figsize'] = [width, height]
+                    parsed_result['reasoning'] = parsed_result.get('reasoning', '') + f" Extracted figsize: [{width}, {height}] for enlargement."
+                    break
         
         elif tool == 'make_ricker':
             # Extract frequency if missing
@@ -304,6 +349,31 @@ Return response as JSON with this structure:
                         reasoning.append(f"Extracted densities using alternative patterns: {[float(m) for m in matches[:3]]}")
                         break
 
+            # Extract incident angles
+            incident_angles = self.input_parser.extract_incident_angles(user_input)
+            if incident_angles:
+                params['incident_angle'] = incident_angles[0]
+                reasoning.append(f"Extracted incident angle: {incident_angles[0]}°")
+
+            # Extract figsize for enlargement requests
+            figsize_patterns = [
+                r'enlarge.*?(\d+)\s*[x×]\s*(\d+)',
+                r'bigger.*?(\d+)\s*[x×]\s*(\d+)',
+                r'larger.*?(\d+)\s*[x×]\s*(\d+)',
+                r'figsize.*?\[(\d+),\s*(\d+)\]',
+                r'size.*?(\d+)\s*[x×]\s*(\d+)',
+                r'(\d+)\s*[x×]\s*(\d+).*?(?:inch|in)'
+            ]
+            
+            for pattern in figsize_patterns:
+                match = re.search(pattern, user_input.lower())
+                if match:
+                    width = float(match.group(1))
+                    height = float(match.group(2))
+                    params['figsize'] = [width, height]
+                    reasoning.append(f"Extracted figsize: [{width}, {height}] for enlargement")
+                    break
+
             # Use context for missing parameters
             context_used = self._apply_context_for_missing_params(params, tool)
             if context_used:
@@ -324,6 +394,16 @@ Return response as JSON with this structure:
                     if 'time_array' not in params:
                         params['time_array'] = last_wavelet.get('time_array')
                     reasoning.append("Used last generated wavelet from context.")
+
+            # If plot_wedge_model, use last_wedge_model from context if needed
+            if tool == 'plot_wedge_model':
+                last_wedge = self.context_manager.get_context('last_wedge_model')
+                if last_wedge:
+                    if 'synthetic_data' not in params:
+                        params['synthetic_data'] = last_wedge.get('synthetic_data')
+                    if 'parameters' not in params:
+                        params['parameters'] = last_wedge.get('parameters')
+                    reasoning.append("Used last generated wedge model from context.")
 
             # Check for missing required parameters
             missing_params = []
@@ -419,14 +499,26 @@ Return response as JSON with this structure:
             else:
                 return 'wedge_model'
         
+        # Check for enlargement/plotting requests without explicit model type
+        if any(word in text for word in ['enlarge', 'bigger', 'larger', 'plot', 'show', 'display']):
+            # If figsize is specified, assume it's for plotting
+            if 'figsize' in params:
+                # Check if we have wedge model context
+                last_wedge = self.context_manager.get_context('last_wedge_model')
+                if last_wedge:
+                    return 'plot_wedge_model'
+                # Check if we have ricker wavelet context
+                last_wavelet = self.context_manager.get_context('last_ricker_wavelet')
+                if last_wavelet:
+                    return 'plot_ricker'
+        
         if any(word in text for word in ['avo', 'reflectivity', 'zoeppritz']):
             return 'zoeppritz_reflectivity'
         
         if any(word in text for word in ['shuey', 'approximation']):
             return 'shuey_reflectivity'
         
-        if any(word in text for word in ['fluid', 'indicator']):
-            return 'avo_fluid_indicator'
+
         
         # Infer from parameters
         if 'frequency' in params and 'max_thickness' not in params:
@@ -435,8 +527,7 @@ Return response as JSON with this structure:
             return 'wedge_model'
         elif 'vp1' in params and 'vp2' in params:
             return 'zoeppritz_reflectivity'
-        elif 'intercept' in params and 'gradient' in params:
-            return 'avo_fluid_indicator'
+
         
         return None
 
@@ -534,10 +625,22 @@ Return response as JSON with this structure:
                     'synthetic_data': result[2],
                     'parameters': result[3]
                 })
-                return {'image_path': plot_result, 'parameters': parameters}
+                
+                # Generate comprehensive model information
+                model_info = self._generate_model_information(result[3], parameters)
+                
+                return {
+                    'image_path': plot_result, 
+                    'parameters': parameters,
+                    'model_info': model_info
+                }
 
             # If result is an image path (for plot_ricker), return a special dict
             if tool_name == 'plot_ricker' and isinstance(result, str) and result.endswith('.png'):
+                return {'image_path': result, 'parameters': parameters}
+            
+            # If result is an image path (for plot_wedge_model), return a special dict
+            if tool_name == 'plot_wedge_model' and isinstance(result, str) and result.endswith('.png'):
                 return {'image_path': result, 'parameters': parameters}
             
             return f"Successfully executed {tool_name} with parameters: {parameters}"
@@ -709,6 +812,185 @@ The model has been created and stored in context for future reference."""
             return "\n".join(examples)
         
         return "- Provide the missing parameters in any format you prefer"
+
+    def _generate_model_information(self, model_params: Dict[str, Any], input_params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Generate comprehensive model information for display to the user.
+        
+        Args:
+            model_params: Parameters returned from the wedge model creation
+            input_params: Original input parameters
+            
+        Returns:
+            Dict[str, Any]: Comprehensive model information
+        """
+        # Calculate tuning thickness
+        v2 = model_params.get('v2', 2500)
+        freq = model_params.get('wavelet_freq', 30)
+        tuning_thickness = v2 / (4 * freq)
+        
+        # Calculate acoustic impedances
+        z1 = model_params.get('v1', 2000) * model_params.get('rho1', 2.2)
+        z2 = model_params.get('v2', 2500) * model_params.get('rho2', 2.4)
+        z3 = model_params.get('v3', 3000) * model_params.get('rho3', 2.6)
+        
+        # Calculate reflection coefficients
+        rc1 = model_params.get('rc1', (z2 - z1) / (z2 + z1))
+        rc2 = model_params.get('rc2', (z3 - z2) / (z3 + z2))
+        
+        # Calculate resolution limit (1/4 wavelength)
+        resolution_limit = tuning_thickness / 2
+        
+        # Calculate wavelength
+        wavelength = v2 / freq
+        
+        # Determine geological interpretation
+        geological_interpretation = self._interpret_geological_scenario(model_params)
+        
+        # Calculate tuning effects
+        tuning_effects = self._analyze_tuning_effects(model_params, tuning_thickness)
+        
+        return {
+            'model_summary': {
+                'model_type': 'Wedge Model',
+                'description': 'Three-layer seismic wedge model for tuning analysis',
+                'created_at': time.time()
+            },
+            'layer_properties': {
+                'layer_1': {
+                    'name': 'Overburden',
+                    'velocity': model_params.get('v1', 2000),
+                    'density': model_params.get('rho1', 2.2),
+                    'impedance': z1,
+                    'unit_velocity': 'm/s',
+                    'unit_density': 'g/cc',
+                    'unit_impedance': 'g·m/s·cc'
+                },
+                'layer_2': {
+                    'name': 'Wedge Layer',
+                    'velocity': model_params.get('v2', 2500),
+                    'density': model_params.get('rho2', 2.4),
+                    'impedance': z2,
+                    'unit_velocity': 'm/s',
+                    'unit_density': 'g/cc',
+                    'unit_impedance': 'g·m/s·cc'
+                },
+                'layer_3': {
+                    'name': 'Basement',
+                    'velocity': model_params.get('v3', 3000),
+                    'density': model_params.get('rho3', 2.6),
+                    'impedance': z3,
+                    'unit_velocity': 'm/s',
+                    'unit_density': 'g/cc',
+                    'unit_impedance': 'g·m/s·cc'
+                }
+            },
+            'wavelet_properties': {
+                'type': model_params.get('wavelet_label', 'Ricker'),
+                'frequency': model_params.get('wavelet_freq', 30),
+                'unit_frequency': 'Hz',
+                'wavelength': wavelength,
+                'unit_wavelength': 'm'
+            },
+            'model_geometry': {
+                'max_thickness': model_params.get('max_thickness', 100),
+                'num_traces': model_params.get('num_traces', 61),
+                'trace_spacing': model_params.get('max_thickness', 100) / (model_params.get('num_traces', 61) - 1),
+                'unit_thickness': 'm',
+                'unit_spacing': 'm'
+            },
+            'seismic_analysis': {
+                'tuning_thickness': tuning_thickness,
+                'resolution_limit': resolution_limit,
+                'wavelength': wavelength,
+                'unit_analysis': 'm',
+                'reflection_coefficients': {
+                    'upper_interface': rc1,
+                    'lower_interface': rc2
+                },
+                'impedance_contrasts': {
+                    'upper': z2 - z1,
+                    'lower': z3 - z2
+                }
+            },
+            'geological_interpretation': geological_interpretation,
+            'tuning_effects': tuning_effects,
+            'model_parameters': {
+                'sampling_interval': model_params.get('dt', 0.1),
+                'unit_sampling': 'ms',
+                'gain': model_params.get('gain', 1.0),
+                'plot_padding': model_params.get('plotpadtime', 50),
+                'unit_padding': 'ms'
+            }
+        }
+    
+    def _interpret_geological_scenario(self, model_params: Dict[str, Any]) -> Dict[str, Any]:
+        """Interpret the geological scenario based on model parameters."""
+        v1, v2, v3 = model_params.get('v1', 2000), model_params.get('v2', 2500), model_params.get('v3', 3000)
+        rho1, rho2, rho3 = model_params.get('rho1', 2.2), model_params.get('rho2', 2.4), model_params.get('rho3', 2.6)
+        
+        # Calculate impedances
+        z1, z2, z3 = v1 * rho1, v2 * rho2, v3 * rho3
+        
+        # Determine scenario type
+        if v2 < v1 and rho2 < rho1:
+            scenario = "Gas Sand"
+            description = "Low velocity and density wedge suggests gas-filled sand"
+        elif v2 < v1 and rho2 > rho1:
+            scenario = "Oil Sand"
+            description = "Low velocity but higher density suggests oil-filled sand"
+        elif v2 > v1 and v2 < v3:
+            scenario = "Water Sand"
+            description = "Medium velocity suggests water-filled sand"
+        elif v2 > v3:
+            scenario = "Carbonate"
+            description = "High velocity suggests carbonate or hard rock"
+        else:
+            scenario = "Mixed Lithology"
+            description = "Complex velocity pattern suggests mixed lithology"
+        
+        return {
+            'scenario': scenario,
+            'description': description,
+            'confidence': 'High' if abs(v2 - v1) > 200 else 'Medium',
+            'key_indicators': {
+                'velocity_trend': f"{v1} → {v2} → {v3} m/s",
+                'density_trend': f"{rho1:.2f} → {rho2:.2f} → {rho3:.2f} g/cc",
+                'impedance_trend': f"{z1:.0f} → {z2:.0f} → {z3:.0f} g·m/s·cc"
+            }
+        }
+    
+    def _analyze_tuning_effects(self, model_params: Dict[str, Any], tuning_thickness: float) -> Dict[str, Any]:
+        """Analyze tuning effects for the model."""
+        max_thickness = model_params.get('max_thickness', 100)
+        freq = model_params.get('wavelet_freq', 30)
+        
+        # Determine tuning regime
+        if max_thickness < tuning_thickness:
+            regime = "Sub-tuning"
+            description = "Layer thickness is below tuning thickness - strong interference effects"
+        elif max_thickness < 2 * tuning_thickness:
+            regime = "Near-tuning"
+            description = "Layer thickness is near tuning thickness - moderate interference"
+        else:
+            regime = "Post-tuning"
+            description = "Layer thickness is above tuning thickness - minimal interference"
+        
+        # Calculate apparent thickness at tuning
+        apparent_thickness_at_tuning = tuning_thickness * 0.7  # Approximate
+        
+        return {
+            'regime': regime,
+            'description': description,
+            'tuning_thickness': tuning_thickness,
+            'apparent_thickness_at_tuning': apparent_thickness_at_tuning,
+            'frequency_dependency': f"Tuning thickness ∝ 1/frequency (currently {freq} Hz)",
+            'resolution_implications': {
+                'below_tuning': "Strong amplitude variations, poor thickness resolution",
+                'at_tuning': "Maximum amplitude, thickness overestimated",
+                'above_tuning': "Good thickness resolution, amplitude stabilizes"
+            }
+        }
 
     def _handle_unclear_input(self, user_input: str) -> str:
         """

@@ -7,6 +7,11 @@ class ContextManager:
         self.last_frequency: Optional[float] = None
         self.error_count: int = 0
         self.max_errors: int = 3
+        self.token_usage: Dict[str, int] = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+        }
 
     def update_context(self, key: str, value: Any) -> None:
         """
@@ -71,3 +76,48 @@ class ContextManager:
         self.conversation_context.clear()
         self.last_frequency = None
         self.error_count = 0
+        self.token_usage = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+        }
+
+    def set_context(self, key: str, value: Any) -> None:
+        """
+        Alias for update_context for compatibility.
+        """
+        self.update_context(key, value)
+        
+    def update_token_usage(self, usage) -> None:
+        """
+        Update token usage statistics.
+        
+        Args:
+            usage: Object containing token usage information
+        """
+        if usage:
+            # Handle both dictionary and CompletionUsage object
+            try:
+                # Try dictionary access first
+                if hasattr(usage, "get"):
+                    self.token_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
+                    self.token_usage["completion_tokens"] += usage.get("completion_tokens", 0)
+                    self.token_usage["total_tokens"] += usage.get("total_tokens", 0)
+                # Then try object attribute access
+                else:
+                    self.token_usage["prompt_tokens"] += getattr(usage, "prompt_tokens", 0)
+                    self.token_usage["completion_tokens"] += getattr(usage, "completion_tokens", 0)
+                    self.token_usage["total_tokens"] += getattr(usage, "total_tokens", 0)
+            except Exception as e:
+                # Log error but don't crash
+                print(f"Error updating token usage: {e}")
+                pass
+    
+    def get_token_usage(self) -> Dict[str, int]:
+        """
+        Get the current token usage statistics.
+        
+        Returns:
+            Dict[str, int]: Dictionary with token usage counts
+        """
+        return self.token_usage

@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "seismic-chatbot"
+version = "0.1.0"
+description = "Chat-driven seismic forward-modeling assistant (wavelets, wedge models, AVO, rock physics) with LLM tool-use and RAG."
+readme = "README_TOOL_USE.md"
+requires-python = ">=3.9"
+dynamic = ["dependencies"]
+
+[project.scripts]
+# Console entry point; runs main.main(). Requires the package to be installed
+# (pip install -e .) so the flat top-level modules are importable.
+seismic-chatbot = "main:main"
+
+[tool.setuptools]
+# main.py is a top-level module, not part of a package.
+py-modules = ["main"]
+
+[tool.setuptools.packages.find]
+# Flat layout: each top-level dir is its own importable package (matching the
+# existing absolute imports, e.g. `from config.settings import ...`).
+include = ["config*", "core*", "tools*", "knowledge*", "parsing*", "interfaces*", "workflows*"]
+exclude = ["tests*"]
+
+[tool.setuptools.dynamic]
+# Single source of truth for runtime deps stays in requirements.txt.
+dependencies = { file = ["requirements.txt"] }
