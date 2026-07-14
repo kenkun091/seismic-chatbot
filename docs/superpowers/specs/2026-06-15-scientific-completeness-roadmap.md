@@ -104,7 +104,7 @@ than adding new physics.
 
 1. `gassmann_substitution` (A1) — quick win, unblocks fluid-case AVO modeling.
 2. `avo_attributes` + `plot_avo_crossplot` (A2) — headline AVO interpretation.
-3. `synthetic_seismogram` + `plot_synthetic_seismogram` (B1) — N-layer keystone.
+3. `synthetic_seismogram` + `plot_synthetic_seismogram` (B1) — N-layer keystone. **DONE 2026-07-12** (see `2026-07-12-synthetic-seismogram-design.md`).
 4. Then, as wanted: `elastic_impedance`, pull-forward `ruger_reflectivity`, Q + NMO.
 
 ## Process note

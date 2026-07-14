@@ -127,6 +127,30 @@ Addressed in `tools/wedge_tools.py` / `tools/avo_tools.py` / `tools/ricker_tools
 Registered in `core/tool_registry.py` (auto-plot `wedge_avo_gather` → `plot_wedge_gather`);
 the chatbot stores `last_wedge_gather` and chains to the plot. Covered by `tests/test_wedge_gather.py`.
 
+## N-layer synthetic seismogram
+
+`tools/synthetic_tools.py` provides the general (non-wedge) 1-D convolutional model:
+- `create_synthetic_seismogram(thickness, vp, rho, vs=None, ...)` → `(time_array,
+  trace, parameters)`. N = len(vp) layers, `thickness` has **N−1** entries (basal
+  layer is a half-space); meters in, TWT = 2000·h/vp ms internally. `angle=0` →
+  acoustic RC; `angle>0` → Shuey (default) or exact Zoeppritz per interface
+  (`method`). `vs=None` defaults to vp/2 (wedge convention). Thin layers that round
+  to one sample **superpose** (`+=`, deliberately unlike the wedge's assignment).
+  Guards live in the function itself (recipes bypass the registry validator);
+  `validate_synthetic_inputs` is shared with the registry's
+  `validate_synthetic_seismogram` (bool/str contract).
+- `plot_synthetic_seismogram(trace, parameters)` → 3-panel PNG (AI layer model |
+  reflectivity stems | wiggle trace), auto-chained via `AUTO_PLOT`; the chatbot
+  stores `last_synthetic`.
+- `workflows/recipes/petro_to_synthetic.py`: per-layer porosity/clay/fluid →
+  `predict_layer` each → the synthetic; registered as a `WorkflowSpec`
+  (`run_sweep`-compatible metrics `max_abs_amplitude`, `max_abs_rc`), with
+  recipe-level early-fail length/geometry guards.
+- Oracle-tested against `wedge_model`'s 3-layer case on event separation and
+  amplitudes (the two tools use different absolute time references). Covered by
+  `tests/test_synthetic_seismogram.py`, `test_petro_to_synthetic.py`,
+  `test_chatbot_synthetic.py`.
+
 ## The tool layer is registry-driven (the important architecture)
 
 **`core/tool_registry.py` is the single source of truth.** Every LLM-facing tool is declared once as a frozen `ToolSpec` in the `REGISTRY` list (name, `fn`, description, JSON-schema `params`, `required`, `defaults`, optional `validator`, optional `auto_plot`). Everything else is *derived* at import time:
