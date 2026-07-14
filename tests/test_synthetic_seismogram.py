@@ -4,6 +4,7 @@ import pytest
 
 from tools.synthetic_tools import validate_synthetic_inputs, create_synthetic_seismogram
 from tools.avo_tools import shuey_reflectivity, zoeppritz_reflectivity
+from tools.wedge_tools import create_wedge_model
 
 VP3 = [3000.0, 2500.0, 3200.0]
 RHO3 = [2.4, 2.2, 2.5]
@@ -189,3 +190,44 @@ class TestAnglePath:
         _, _, p = create_synthetic_seismogram(TH2, VP3, RHO3, vs=self.VS3, angle=0.0)
         z = [v * r for v, r in zip(VP3, RHO3)]
         assert np.isclose(p["rcs"][0], (z[1] - z[0]) / (z[1] + z[0]))
+
+
+class TestOracleAgainstWedge:
+    def test_event_separation_and_amplitudes_match_wedge(self):
+        """3-layer stack vs the matching wedge trace.
+
+        The two tools use different time references (wedge anchors interface 1
+        at 300 ms; the synthetic uses a pad_time axis), so compare the event
+        SEPARATION and event AMPLITUDES, not absolute times. The wedge places
+        its second interface one sample late (known idx2+1 quirk) -> allow a
+        2-sample separation tolerance.
+        """
+        vp, rho = [3000.0, 2500.0, 3200.0], [2.4, 2.2, 2.5]
+        h, dt = 50.0, 0.1
+
+        _, syn_trace, sp = create_synthetic_seismogram(
+            [60.0, h], vp, rho, dt=dt, wavelet_freq=30.0, pad_time=60.0)
+
+        _, _, wedge_synth, wp = create_wedge_model(
+            max_thickness=100.0, v1=vp[0], v2=vp[1], v3=vp[2],
+            rho1=rho[0], rho2=rho[1], rho3=rho[2],
+            num_traces=101, dt=dt, wavelet_freq=30.0)
+        wtrace = wedge_synth[:, 50]  # linspace(0,100,101)[50] == 50 m == h
+        wtime = wp["t0"] + np.arange(wedge_synth.shape[0]) * dt
+
+        syn_time = np.arange(sp["nt"]) * dt
+
+        def event(trace, time, t_expect, half_win=15.0):
+            m = (time >= t_expect - half_win) & (time <= t_expect + half_win)
+            seg, tseg = trace[m], time[m]
+            k = int(np.argmax(np.abs(seg)))
+            return tseg[k], seg[k]
+
+        t1s, a1s = event(syn_trace, syn_time, sp["interface_times"][0])
+        t2s, a2s = event(syn_trace, syn_time, sp["interface_times"][1])
+        t1w, a1w = event(wtrace, wtime, 300.0)
+        t2w, a2w = event(wtrace, wtime, 300.0 + 2000.0 * h / vp[1])
+
+        assert abs((t2s - t1s) - (t2w - t1w)) <= 2 * dt + 1e-9
+        assert np.isclose(a1s, a1w, rtol=0.05)
+        assert np.isclose(a2s, a2w, rtol=0.05)
