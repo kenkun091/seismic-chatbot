@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from tools.synthetic_tools import validate_synthetic_inputs
+from tools.synthetic_tools import validate_synthetic_inputs, create_synthetic_seismogram
 
 VP3 = [3000.0, 2500.0, 3200.0]
 RHO3 = [2.4, 2.2, 2.5]
@@ -69,3 +69,83 @@ class TestValidateSyntheticInputs:
         # vs >= vp is non-physical (require_elastic_medium)
         with pytest.raises(ValueError):
             validate_synthetic_inputs(TH2, VP3, RHO3, vs=[3000.0, 1250.0, 1600.0])
+
+
+class TestCreateSyntheticSeismogram:
+    def test_return_shapes_and_parameter_keys(self):
+        t, trace, p = create_synthetic_seismogram(TH2, VP3, RHO3)
+        assert t.shape == trace.shape == (p["nt"],)
+        for key in ("n_layers", "vp", "vs", "rho", "thickness", "labels",
+                    "interface_times", "rcs", "rc_series", "t0", "nt", "dt",
+                    "pad_time", "angle", "method", "wavelet_freq", "wavelet_label"):
+            assert key in p
+        assert p["n_layers"] == 3
+        assert p["labels"] == ["layer 1", "layer 2", "layer 3"]
+
+    def test_interface_twt_placement(self):
+        t, trace, p = create_synthetic_seismogram(TH2, VP3, RHO3, dt=0.1, pad_time=50.0)
+        t1 = 50.0 + 2000.0 * 50.0 / 3000.0          # 83.3333 ms
+        t2 = t1 + 2000.0 * 50.0 / 2500.0            # 123.3333 ms
+        assert np.allclose(p["interface_times"], [t1, t2])
+        rc_series = np.asarray(p["rc_series"])
+        idx = np.flatnonzero(rc_series)
+        assert list(idx) == [round(t1 / 0.1), round(t2 / 0.1)]
+
+    def test_acoustic_rc_values(self):
+        _, _, p = create_synthetic_seismogram(TH2, VP3, RHO3)
+        z = [v * r for v, r in zip(VP3, RHO3)]
+        rc1 = (z[1] - z[0]) / (z[1] + z[0])
+        rc2 = (z[2] - z[1]) / (z[2] + z[1])
+        assert np.allclose(p["rcs"], [rc1, rc2])
+
+    def test_event_sign_matches_rc(self):
+        t, trace, p = create_synthetic_seismogram(TH2, VP3, RHO3, dt=0.1)
+        i0 = round(p["interface_times"][0] / 0.1)
+        win = trace[i0 - 100:i0 + 100]
+        peak = win[np.argmax(np.abs(win))]
+        assert np.sign(peak) == np.sign(p["rcs"][0])  # negative contrast here
+
+    def test_thin_layers_superpose_on_one_sample(self):
+        # 1 mm middle layer: both interfaces round to the same time sample,
+        # so the reflection coefficients must ADD (not overwrite).
+        _, _, p = create_synthetic_seismogram([50.0, 0.001], VP3, RHO3, dt=0.1)
+        rc_series = np.asarray(p["rc_series"])
+        idx = np.flatnonzero(rc_series)
+        assert len(idx) == 1
+        assert np.isclose(rc_series[idx[0]], p["rcs"][0] + p["rcs"][1])
+
+    def test_amplitude_proportional_to_rc(self):
+        # A lone spike convolved with the wavelet: signed peak / rc is the
+        # wavelet peak — identical across models.
+        _, tr_a, pa = create_synthetic_seismogram([50.0], [3000.0, 2500.0], [2.4, 2.2])
+        _, tr_b, pb = create_synthetic_seismogram([50.0], [3000.0, 2000.0], [2.4, 2.0])
+        peak_a = tr_a[np.argmax(np.abs(tr_a))]
+        peak_b = tr_b[np.argmax(np.abs(tr_b))]
+        assert np.isclose(peak_a / pa["rcs"][0], peak_b / pb["rcs"][0], rtol=1e-9)
+
+    def test_ormsby_dominant_frequency_rule(self):
+        _, _, p = create_synthetic_seismogram(TH2, VP3, RHO3, wv_type="ormsby",
+                                              ormsby_freq="5,10,40,50")
+        assert p["wavelet_freq"] == 25.0             # (f2+f3)/2
+
+    def test_labels_override_and_length_check(self):
+        _, _, p = create_synthetic_seismogram(TH2, VP3, RHO3,
+                                              labels=["shale", "sand", "shale"])
+        assert p["labels"] == ["shale", "sand", "shale"]
+        with pytest.raises(ValueError, match="labels must have 3"):
+            create_synthetic_seismogram(TH2, VP3, RHO3, labels=["a", "b"])
+
+    def test_unusual_velocity_warns(self):
+        with pytest.warns(UserWarning):
+            create_synthetic_seismogram(TH2, [100.0, 2500.0, 3200.0], RHO3,
+                                        vs=[50.0, 1250.0, 1600.0])
+
+    def test_aliasing_warns(self):
+        # dt=1.0 ms -> Nyquist 500 Hz; 3 * 200 Hz Ricker content exceeds it.
+        with pytest.warns(UserWarning):
+            create_synthetic_seismogram(TH2, VP3, RHO3, dt=1.0, wavelet_freq=200.0)
+
+    def test_parameters_json_friendly(self):
+        import json
+        _, _, p = create_synthetic_seismogram(TH2, VP3, RHO3)
+        json.dumps(p)  # must not raise
