@@ -75,6 +75,7 @@ Available tools:
 - plot_wedge_model: Plots wedge model results
 - wedge_avo_gather: Builds an AVO angle gather (synthetic wedge per incidence angle) and plots tuning-vs-angle + AVO
 - analyze_wedge: Analyzes a wedge model for tuning thickness and amplitude-vs-thickness
+- synthetic_seismogram: Builds a general N-layer synthetic seismogram from per-layer thickness (m), Vp, density and optional Vs — reflectivity at each interface (acoustic, or Shuey/Zoeppritz at an incidence angle) convolved with a Ricker/Ormsby wavelet, with a layer-model/reflectivity/trace plot
 - zoeppritz_reflectivity: Calculates reflectivity using Zoeppritz equations
 - shuey_reflectivity: Calculates reflectivity using Shuey's approximation
 - plot_avo_reflectivity: Plots AVO reflectivity curves
@@ -808,6 +809,11 @@ within the constraints above."""
                 if not (last and "gather" in last and "parameters" in last):
                     return None
                 plot_input = {"gather": last["gather"], "parameters": last["parameters"]}
+            elif tool_name == "synthetic_seismogram":
+                last = self.context_manager.get_context("last_synthetic")
+                if not (last and "trace" in last and "parameters" in last):
+                    return None
+                plot_input = {"trace": last["trace"], "parameters": last["parameters"]}
             elif tool_name in ("zoeppritz_reflectivity", "shuey_reflectivity"):
                 if not (isinstance(tool_result, np.ndarray) and "angles" in tool_input):
                     return None
@@ -910,6 +916,17 @@ within the constraints above."""
                     self.context_manager.set_context("last_wedge_gather", {
                         "time_array": time_array,
                         "gather": gather,
+                        "parameters": parameters,
+                        "input_params": tool_input
+                    })
+
+            elif tool_name == "synthetic_seismogram":
+                # Store synthetic trace for automatic plotting (3-tuple return)
+                if isinstance(tool_result, tuple) and len(tool_result) == 3:
+                    time_array, trace, parameters = tool_result
+                    self.context_manager.set_context("last_synthetic", {
+                        "time_array": time_array,
+                        "trace": trace,
                         "parameters": parameters,
                         "input_params": tool_input
                     })
