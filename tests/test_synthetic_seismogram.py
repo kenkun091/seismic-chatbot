@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 
 from tools.synthetic_tools import validate_synthetic_inputs, create_synthetic_seismogram
+from tools.avo_tools import shuey_reflectivity, zoeppritz_reflectivity
 
 VP3 = [3000.0, 2500.0, 3200.0]
 RHO3 = [2.4, 2.2, 2.5]
@@ -149,3 +150,42 @@ class TestCreateSyntheticSeismogram:
         import json
         _, _, p = create_synthetic_seismogram(TH2, VP3, RHO3)
         json.dumps(p)  # must not raise
+
+
+class TestAnglePath:
+    VS3 = [1500.0, 1100.0, 1600.0]
+
+    def test_rc_matches_shuey_at_angle(self):
+        _, _, p = create_synthetic_seismogram(TH2, VP3, RHO3, vs=self.VS3, angle=20.0)
+        expected = shuey_reflectivity(
+            vp1=VP3[0], vs1=self.VS3[0], rho1=RHO3[0],
+            vp2=VP3[1], vs2=self.VS3[1], rho2=RHO3[1], angles=[20.0])
+        assert np.isclose(p["rcs"][0], float(np.asarray(expected).ravel()[0]))
+
+    def test_rc_matches_zoeppritz_when_requested(self):
+        _, _, p = create_synthetic_seismogram(TH2, VP3, RHO3, vs=self.VS3,
+                                              angle=20.0, method="zoeppritz")
+        expected = zoeppritz_reflectivity(
+            vp1=VP3[0], vs1=self.VS3[0], rho1=RHO3[0],
+            vp2=VP3[1], vs2=self.VS3[1], rho2=RHO3[1], angles=[20.0])
+        assert np.isclose(p["rcs"][0], float(np.asarray(expected).ravel()[0]))
+
+    def test_shuey_and_zoeppritz_differ_at_high_angle(self):
+        # Sanity: the exact solution and the linearization diverge at 40 deg,
+        # proving the method switch actually switches implementations.
+        _, _, ps = create_synthetic_seismogram(TH2, VP3, RHO3, vs=self.VS3, angle=40.0)
+        _, _, pz = create_synthetic_seismogram(TH2, VP3, RHO3, vs=self.VS3,
+                                               angle=40.0, method="zoeppritz")
+        assert not np.isclose(ps["rcs"][0], pz["rcs"][0], rtol=1e-6)
+
+    def test_vs_default_used_in_angle_path(self):
+        # vs omitted -> vp/2; result must equal explicitly passing vp/2.
+        _, _, p_default = create_synthetic_seismogram(TH2, VP3, RHO3, angle=15.0)
+        _, _, p_explicit = create_synthetic_seismogram(
+            TH2, VP3, RHO3, vs=[v / 2.0 for v in VP3], angle=15.0)
+        assert np.allclose(p_default["rcs"], p_explicit["rcs"])
+
+    def test_angle_zero_is_acoustic_not_shuey(self):
+        _, _, p = create_synthetic_seismogram(TH2, VP3, RHO3, vs=self.VS3, angle=0.0)
+        z = [v * r for v, r in zip(VP3, RHO3)]
+        assert np.isclose(p["rcs"][0], (z[1] - z[0]) / (z[1] + z[0]))
