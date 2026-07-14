@@ -14,6 +14,7 @@ from workflows.recipes.fluid_scenario import fluid_scenario
 from workflows.recipes.tuning import tuning
 from workflows.recipes.eei_optimal_chi_petro import eei_optimal_chi_petro
 from workflows.recipes.saturation_sweep import saturation_sweep
+from workflows.recipes.petro_to_synthetic import petro_to_synthetic
 from workflows.sweep import run_sweep
 
 
@@ -173,6 +174,42 @@ WORKFLOW_REGISTRY = [
         },
         required=["recipe", "grid", "metric"],
         defaults={"fixed": None},
+        auto_plot=None,
+    ),
+    WorkflowSpec(
+        name="petro_to_synthetic",
+        fn=petro_to_synthetic,
+        description=(
+            "N-layer synthetic seismogram from petrophysics: predict each "
+            "layer's elastic properties (Vp, Vs, density) from porosity, clay "
+            "volume and pore fluid (Han 1986 / Gassmann), stack the layers with "
+            "their thicknesses, and build the 1-D convolutional synthetic "
+            "(acoustic at normal incidence, Shuey/Zoeppritz at an angle). "
+            "Returns the per-layer properties, interface times and reflection "
+            "coefficients, amplitude metrics, and a layer-model/reflectivity/"
+            "trace plot."
+        ),
+        params={
+            "phit": {"type": "array", "items": {"type": "number"},
+                     "description": "Porosity per layer (fraction, 0-1), length N (N >= 2, top to bottom)."},
+            "vclay": {"type": "array", "items": {"type": "number"},
+                      "description": "Clay volume per layer (fraction, 0-1), length N."},
+            "thickness": {"type": "array", "items": {"type": "number"},
+                          "description": "Layer thicknesses in meters, length N-1 (the basal layer is a half-space)."},
+            "fluids": {"type": "array", "items": {"type": "string"},
+                       "description": "Pore fluid per layer ('brine'/'water', 'oil', or 'gas'), length N. Default: all 'brine'."},
+            "labels": {"type": "array", "items": {"type": "string"},
+                       "description": "Optional layer names for the plot, length N."},
+            "wavelet_freq": {"type": "number",
+                             "description": "Ricker dominant frequency in Hz (default 30)."},
+            "angle": {"type": "number",
+                      "description": "Incidence angle in degrees, 0 <= angle < 90 (default 0)."},
+            "method": {"type": "string",
+                       "description": "Angle-dependent reflectivity: 'shuey' (default) or 'zoeppritz'."},
+        },
+        required=["phit", "vclay", "thickness"],
+        defaults={"fluids": None, "labels": None, "wavelet_freq": 30.0,
+                  "angle": 0.0, "method": "shuey"},
         auto_plot=None,
     ),
 ]

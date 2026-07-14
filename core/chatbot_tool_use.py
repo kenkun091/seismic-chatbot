@@ -90,6 +90,7 @@ Available tools:
 - rock_properties_saturation: Computes Vp, Vs, density, Vp/Vs and impedances at a continuous water saturation Sw from porosity and clay volume, via Gassmann substitution with a Reuss (uniform) or Brie (patchy) brine+hydrocarbon fluid mix.
 - saturation_sweep: Sweeps water saturation Sw for one rock (porosity & clay volume) and plots the Vp/Vs/AI saturation curves (the fluid line) under Reuss or Brie mixing — useful for fluid-feasibility / DHI sensitivity.
 - run_sweep: Sweep another workflow recipe over a grid of parameter values (cartesian product) and collect one scalar metric per run — returns a results table, summary statistics, a coverage report, and an aggregate plot (line for 1 parameter, heatmap for 2). Use for sensitivity / scenario analysis across ranges of porosity, clay, fluid, saturation, or frequency.
+- petro_to_synthetic: N-layer synthetic seismogram from petrophysics — predicts each layer's elastic properties from porosity/clay/fluid (Han 1986 + Gassmann), stacks them with their thicknesses, and returns per-layer properties, interface reflectivities, amplitude metrics, and a layer-model/reflectivity/trace plot.
 
 Guidelines:
 1. Be helpful and concise in your responses

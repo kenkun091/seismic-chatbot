@@ -95,3 +95,43 @@ class TestRecipeGuards:
     def test_non_positive_thickness(self):
         with pytest.raises(ValueError, match=r"thickness\[0\]"):
             petro_to_synthetic(PHIT, VCLAY, [-5.0, 20.0])
+
+
+class TestWorkflowRegistration:
+    def test_in_workflow_and_tool_registries(self):
+        from workflows.engine import WORKFLOW_NAMES, WORKFLOW_REGISTRY_BY_NAME
+        from core.tool_registry import TOOL_FUNCTIONS
+        assert "petro_to_synthetic" in WORKFLOW_NAMES
+        assert "petro_to_synthetic" in TOOL_FUNCTIONS
+        spec = WORKFLOW_REGISTRY_BY_NAME["petro_to_synthetic"]
+        assert spec.required == ["phit", "vclay", "thickness"]
+
+    def test_engine_run_fills_defaults(self):
+        from workflows.engine import WorkflowEngine
+        res = WorkflowEngine().run("petro_to_synthetic",
+                                   {"phit": PHIT, "vclay": VCLAY, "thickness": TH})
+        try:
+            assert res["wavelet_freq"] == 30.0 and res["angle"] == 0.0
+        finally:
+            _cleanup(res)
+
+    def test_system_prompt_lists_recipe(self, fake_llm_factory):
+        from core.chatbot_tool_use import SeismicChatBotToolUse
+        bot = SeismicChatBotToolUse(llm_client=fake_llm_factory([]))
+        assert "- petro_to_synthetic:" in bot._create_system_prompt()
+
+    def test_run_sweep_over_wavelet_freq(self):
+        from workflows.sweep import run_sweep
+        res = run_sweep(
+            "petro_to_synthetic",
+            grid={"wavelet_freq": [20.0, 40.0]},
+            metric="max_abs_amplitude",
+            fixed={"phit": PHIT, "vclay": VCLAY, "thickness": TH},
+        )
+        try:
+            assert res["coverage"] == {"total": 2, "ran": 2, "failed": 0,
+                                       "failures": []}
+            assert res["stats"]["kind"] == "numeric"
+            assert len(res["rows"]) == 2
+        finally:
+            _cleanup(res)
