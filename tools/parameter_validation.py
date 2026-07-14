@@ -445,3 +445,30 @@ def validate_avo(params: _Dict[str, _Any]) -> _Tuple[bool, str]:
         return False, err
     return True, ""
 
+
+
+def validate_synthetic_seismogram(params):
+    """Registry adapter for the N-layer synthetic: (bool, str) contract.
+
+    Wraps tools.synthetic_tools.validate_synthetic_inputs so the REJECT rules
+    stay defined in exactly one place.
+    """
+    from tools.synthetic_tools import validate_synthetic_inputs
+
+    try:
+        validate_synthetic_inputs(
+            thickness=params.get("thickness") or [],
+            vp=params.get("vp") or [],
+            rho=params.get("rho") or [],
+            vs=params.get("vs"),
+            angle=params.get("angle", 0.0),
+            method=params.get("method", "shuey"),
+            wv_type=params.get("wv_type", "ricker"),
+            ormsby_freq=params.get("ormsby_freq"),
+            dt=params.get("dt", 0.1),
+            pad_time=params.get("pad_time", 50.0),
+            wavelet_freq=params.get("wavelet_freq", 30.0),
+        )
+    except ValueError as exc:
+        return False, str(exc)
+    return True, ""

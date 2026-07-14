@@ -13,9 +13,10 @@ from tools.wedge_tools import create_wedge_model, plot_wedge_model, analyze_wedg
 from tools.avo_tools import zoeppritz_reflectivity, shuey_reflectivity, plot_avo_reflectivity, avo_attributes, plot_avo_crossplot, extended_elastic_impedance, plot_extended_elastic_impedance, eei_optimal_chi
 from tools.rock_physics_tools import calculate_rock_properties, plot_rock_properties, rock_physics_rag, gassmann_substitution, rock_properties_saturation
 from tools.rag_tools import knowledge_rag
+from tools.synthetic_tools import create_synthetic_seismogram, plot_synthetic_seismogram
 from workflows.adapters import predict_elastic_layer
 from workflows.engine import WORKFLOW_REGISTRY
-from tools.parameter_validation import validate_make_ricker, validate_wedge_model, validate_avo
+from tools.parameter_validation import validate_make_ricker, validate_wedge_model, validate_avo, validate_synthetic_seismogram
 
 
 @dataclass(frozen=True)
@@ -280,6 +281,64 @@ REGISTRY = [
             "parameters": {"type": "object", "description": "Parameters returned by wedge_avo_gather."},
         },
         required=["gather", "parameters"],
+        defaults={},
+    ),
+    ToolSpec(
+        name="synthetic_seismogram",
+        fn=create_synthetic_seismogram,
+        description=(
+            "Builds a general N-layer 1-D convolutional synthetic seismogram: "
+            "per-layer thickness (meters, one per layer above the basal "
+            "half-space), Vp, density and optional Vs; reflectivity at each "
+            "interface (acoustic at normal incidence, Shuey or exact Zoeppritz "
+            "at an incidence angle) convolved with a Ricker or Ormsby wavelet."
+        ),
+        params={
+            "thickness": {"type": "array", "items": {"type": "number"},
+                          "description": "Layer thicknesses in meters, length N-1 — one per layer above the basal half-space (the last layer needs no thickness)."},
+            "vp": {"type": "array", "items": {"type": "number"},
+                   "description": "P-wave velocity per layer in m/s (length N, N >= 2)."},
+            "rho": {"type": "array", "items": {"type": "number"},
+                    "description": "Density per layer in g/cc (length N)."},
+            "vs": {"type": "array", "items": {"type": "number"},
+                   "description": "Optional S-wave velocity per layer in m/s (length N). Defaults to Vp/2."},
+            "wavelet_freq": {"type": "number",
+                             "description": "Ricker dominant frequency in Hz (default 30)."},
+            "wv_type": {"type": "string",
+                        "description": "Wavelet type: 'ricker' (default) or 'ormsby'."},
+            "ormsby_freq": {"type": "string",
+                            "description": "Four increasing Ormsby corner frequencies 'f1,f2,f3,f4'; required when wv_type='ormsby'."},
+            "phase_rot": {"type": "number",
+                          "description": "Wavelet phase rotation in degrees (default 0)."},
+            "angle": {"type": "number",
+                      "description": "Incidence angle in degrees, 0 <= angle < 90 (default 0 = normal incidence)."},
+            "method": {"type": "string",
+                       "description": "Angle-dependent reflectivity: 'shuey' (default) or 'zoeppritz'; used when angle > 0."},
+            "dt": {"type": "number",
+                   "description": "Time sampling interval in ms (default 0.1)."},
+            "pad_time": {"type": "number",
+                         "description": "Quiet time in ms before the first and after the last interface (default 50)."},
+            "labels": {"type": "array", "items": {"type": "string"},
+                       "description": "Optional layer names for the plot (length N)."},
+        },
+        required=["thickness", "vp", "rho"],
+        defaults={"vs": None, "wavelet_freq": 30.0, "wv_type": "ricker",
+                  "ormsby_freq": None, "phase_rot": 0.0, "angle": 0.0,
+                  "method": "shuey", "dt": 0.1, "pad_time": 50.0, "labels": None},
+        validator=validate_synthetic_seismogram,
+        auto_plot="plot_synthetic_seismogram",
+    ),
+    ToolSpec(
+        name="plot_synthetic_seismogram",
+        fn=plot_synthetic_seismogram,
+        description="Plots an N-layer synthetic seismogram: layer impedance model, reflectivity series, and the synthetic trace.",
+        params={
+            "trace": {"type": "array", "items": {"type": "number"},
+                      "description": "Synthetic trace samples."},
+            "parameters": {"type": "object",
+                           "description": "Parameters dict returned by synthetic_seismogram."},
+        },
+        required=["trace", "parameters"],
         defaults={},
     ),
     ToolSpec(

@@ -262,3 +262,34 @@ class TestPlotSyntheticSeismogram:
         out = plot_synthetic_seismogram(list(trace), p,
                                         output_path=str(tmp_path / "syn2.png"))
         assert os.path.getsize(out) > 0
+
+
+class TestRegistryWiring:
+    def test_registered_with_auto_plot(self):
+        from core.tool_registry import (AUTO_PLOT, REGISTRY_BY_NAME,
+                                        TOOL_FUNCTIONS, TOOL_SCHEMAS)
+        assert "synthetic_seismogram" in TOOL_FUNCTIONS
+        assert "plot_synthetic_seismogram" in TOOL_FUNCTIONS
+        assert AUTO_PLOT["synthetic_seismogram"] == "plot_synthetic_seismogram"
+        spec = REGISTRY_BY_NAME["synthetic_seismogram"]
+        assert spec.required == ["thickness", "vp", "rho"]
+        assert any(s["name"] == "synthetic_seismogram" for s in TOOL_SCHEMAS)
+
+    def test_validator_tuple_contract(self):
+        from tools.parameter_validation import validate_synthetic_seismogram
+        ok, msg = validate_synthetic_seismogram(
+            {"thickness": [50.0], "vp": [3000.0, 2500.0], "rho": [2.4, 2.2]})
+        assert ok is True and msg == ""
+        ok, msg = validate_synthetic_seismogram(
+            {"thickness": [50.0, 50.0], "vp": [3000.0, 2500.0], "rho": [2.4, 2.2]})
+        assert ok is False and "thickness" in msg
+
+    def test_tool_manager_executes_end_to_end(self):
+        from core.tool_manager import ToolManager
+        tm = ToolManager()
+        result = tm.process_tool_call(
+            "synthetic_seismogram",
+            {"thickness": [50.0, 50.0], "vp": [3000.0, 2500.0, 3200.0],
+             "rho": [2.4, 2.2, 2.5]})
+        assert isinstance(result, tuple) and len(result) == 3
+        assert result[2]["n_layers"] == 3
