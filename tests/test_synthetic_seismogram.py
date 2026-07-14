@@ -1,8 +1,13 @@
 """Tests for tools/synthetic_tools.py — N-layer 1-D convolutional synthetic."""
+import os
 import numpy as np
 import pytest
 
-from tools.synthetic_tools import validate_synthetic_inputs, create_synthetic_seismogram
+from tools.synthetic_tools import (
+    validate_synthetic_inputs,
+    create_synthetic_seismogram,
+    plot_synthetic_seismogram,
+)
 from tools.avo_tools import shuey_reflectivity, zoeppritz_reflectivity
 from tools.wedge_tools import create_wedge_model
 
@@ -231,3 +236,29 @@ class TestOracleAgainstWedge:
         assert abs((t2s - t1s) - (t2w - t1w)) <= 2 * dt + 1e-9
         assert np.isclose(a1s, a1w, rtol=0.05)
         assert np.isclose(a2s, a2w, rtol=0.05)
+
+
+class TestPlotSyntheticSeismogram:
+    def _make(self):
+        return create_synthetic_seismogram(TH2, VP3, RHO3,
+                                           labels=["shale", "sand", "shale"])
+
+    def test_creates_png_at_given_path(self, tmp_path):
+        _, trace, p = self._make()
+        out = plot_synthetic_seismogram(trace, p, output_path=str(tmp_path / "syn.png"))
+        assert out == str(tmp_path / "syn.png")
+        assert os.path.getsize(out) > 0
+
+    def test_default_tempfile_path(self):
+        _, trace, p = self._make()
+        out = plot_synthetic_seismogram(trace, p)
+        try:
+            assert out.endswith(".png") and os.path.getsize(out) > 0
+        finally:
+            os.remove(out)
+
+    def test_accepts_list_trace(self, tmp_path):
+        _, trace, p = self._make()
+        out = plot_synthetic_seismogram(list(trace), p,
+                                        output_path=str(tmp_path / "syn2.png"))
+        assert os.path.getsize(out) > 0

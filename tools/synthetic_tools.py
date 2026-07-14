@@ -178,3 +178,66 @@ def create_synthetic_seismogram(thickness, vp, rho, vs=None, wavelet_freq=30.0,
         "wavelet_label": wavelet_label,
     }
     return time_array, trace, parameters
+
+
+def plot_synthetic_seismogram(trace, parameters, output_path=None):
+    """3-panel synthetic display: impedance model | reflectivity | trace.
+
+    Shared vertical TWT axis, increasing downward. Returns the PNG path.
+    """
+    if output_path is None:
+        fd, output_path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+
+    trace = np.asarray(trace, dtype=float)
+    dt = float(parameters["dt"])
+    t0 = float(parameters.get("t0", 0.0))
+    nt = int(parameters["nt"])
+    time = t0 + np.arange(nt) * dt
+    interface_times = [float(x) for x in parameters["interface_times"]]
+    rcs = [float(x) for x in parameters["rcs"]]
+    vp = parameters["vp"]
+    rho = parameters["rho"]
+    labels = parameters.get("labels") or [f"layer {i+1}" for i in range(len(vp))]
+    ai = [v * r for v, r in zip(vp, rho)]
+
+    fig, axes = plt.subplots(1, 3, figsize=(12, 8), sharey=True)
+
+    # Panel 1: stepped acoustic-impedance profile with layer labels.
+    ax = axes[0]
+    bounds = [time[0]] + interface_times + [time[-1]]
+    for i, a in enumerate(ai):
+        ax.fill_betweenx([bounds[i], bounds[i + 1]], 0, a, alpha=0.35)
+        ax.text(0.03 * max(ai), (bounds[i] + bounds[i + 1]) / 2.0, labels[i],
+                va="center", fontsize=9)
+    for it in interface_times:
+        ax.axhline(it, color="k", lw=0.8)
+    ax.set_xlabel("AI (m/s·g/cc)")
+    ax.set_ylabel("TWT (ms)")
+    ax.set_title("Layer model")
+
+    # Panel 2: reflectivity stems.
+    ax = axes[1]
+    ax.axvline(0, color="k", lw=0.5)
+    for it, rc in zip(interface_times, rcs):
+        ax.plot([0, rc], [it, it], "b-", lw=1.5)
+        ax.plot(rc, it, "bo", ms=4)
+    ax.set_xlabel("Reflection coefficient")
+    ax.set_title("Reflectivity")
+
+    # Panel 3: synthetic wiggle with positive fill.
+    ax = axes[2]
+    ax.plot(trace, time, "k-", lw=0.8)
+    ax.fill_betweenx(time, 0, trace, where=trace > 0, color="k", alpha=0.6)
+    ax.set_xlabel("Amplitude")
+    title = "Synthetic"
+    if parameters.get("angle", 0):
+        title += f" ({parameters['angle']:g}°, {parameters['method']})"
+    ax.set_title(title)
+
+    axes[0].invert_yaxis()  # sharey -> all panels flip together
+    fig.suptitle(f"N-layer synthetic — {parameters.get('wavelet_label', '')}")
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
