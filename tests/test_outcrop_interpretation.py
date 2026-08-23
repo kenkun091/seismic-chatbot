@@ -160,3 +160,18 @@ def test_validate_is_idempotent():
     twice = validate_interpretation(once)
     assert twice == once
     assert twice["regions"][0]["geometry_type"] == "band"
+
+
+def test_region_id_zero_rejected():
+    with pytest.raises(ValueError, match="positive integer"):
+        validate_interpretation(_interp(regions=[_region(id=0)]))
+
+
+def test_region_id_negative_rejected():
+    with pytest.raises(ValueError, match="positive integer"):
+        validate_interpretation(_interp(regions=[_region(id=-1)]))
+
+
+def test_image_size_must_be_positive():
+    with pytest.raises(ValueError, match="image_size"):
+        validate_interpretation(_interp(image_size=[0, 200]))

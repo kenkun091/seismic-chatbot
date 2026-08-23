@@ -124,6 +124,21 @@ def test_overrides_unknown_key_or_field_rejected():
         apply_overrides(regs, {"1": {"colour": "red"}})
 
 
+def test_overrides_negative_key_rejected():
+    regs = _interp([BAND])["regions"]
+    with pytest.raises(ValueError, match="no region"):
+        apply_overrides(regs, {"-1": {"fluid": "gas"}})
+
+
+def test_region_list_never_changes_background_legend_or_vp():
+    """Regression: building a model from a region list must never let a region id
+    of 0 (or any negative id) collide with the reserved background entry."""
+    m = outcrop_to_model(_interp([BAND, LENS]), height_m=20.0)
+    shale = resolve_lithology("shale")
+    assert m["legend"][0] == {"lithology": "shale", "label": "background"}
+    assert m["vp"][m["facies"] == 0].max() == pytest.approx(shale["vp"])
+
+
 def test_gas_override_changes_grid_and_direct_route_override_errors():
     brine = outcrop_to_model(_interp([BAND]), height_m=20.0)
     gas = outcrop_to_model(_interp([BAND]), height_m=20.0, overrides={1: {"fluid": "gas"}})

@@ -138,6 +138,11 @@ def validate_interpretation(data: Any) -> Dict[str, Any]:
             rid = int(rid)
         except (TypeError, ValueError):
             raise ValueError(f"regions[{i}]: id must be an integer (got {r.get('id')!r})")
+        if rid < 1:
+            raise ValueError(
+                f"regions[{i}]: id must be a positive integer (0 is reserved for the "
+                f"background; got {rid})"
+            )
         if rid in seen_ids:
             raise ValueError(f"duplicate region id {rid}")
         seen_ids.add(rid)
@@ -192,6 +197,19 @@ def validate_interpretation(data: Any) -> Dict[str, Any]:
     mode = str(data.get("mode") or "polygons").lower()
     if mode not in ("polygons", "bands"):
         raise ValueError("mode must be 'polygons' or 'bands'")
+
+    if "image_size" in data:
+        size = data["image_size"]
+        ok = isinstance(size, (list, tuple)) and len(size) == 2
+        if ok:
+            try:
+                w, h = int(size[0]), int(size[1])
+            except (TypeError, ValueError):
+                ok = False
+            else:
+                ok = w > 0 and h > 0
+        if not ok:
+            raise ValueError("image_size must be [width_px, height_px] with positive values")
 
     out = {"regions": regions, "scale": scale,
            "background_lithology": background, "mode": mode}
@@ -399,7 +417,7 @@ def apply_overrides(regions: List[Dict[str, Any]],
     for key, fields in overrides.items():
         target = None
         skey = str(key).strip()
-        if skey.lstrip("-").isdigit() and int(skey) in by_id:
+        if skey.lstrip("-").isdigit() and int(skey) >= 1 and int(skey) in by_id:
             target = by_id[int(skey)]
         elif skey.lower() in by_label:
             target = by_label[skey.lower()]
