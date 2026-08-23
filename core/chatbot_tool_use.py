@@ -1,6 +1,7 @@
 import logging
 import re
 import json
+import uuid
 import numpy as np
 from typing import Dict, Any, List, Optional
 from .llm_client import LLMClient
@@ -38,6 +39,7 @@ class SeismicChatBotToolUse:
         self.tool_manager = tool_manager or ToolManager()
         self.knowledge_base = knowledge_base or KnowledgeBase()
         self.context_manager = ContextManager()  # per-session, never shared
+        self.session_id = uuid.uuid4().hex  # names this session's upload sandbox subdir
 
         # Get tool schemas for the LLM
         self.tools = self.tool_manager.get_tool_schemas()
@@ -54,6 +56,31 @@ class SeismicChatBotToolUse:
             tool_manager=self.tool_manager,
             knowledge_base=self.knowledge_base,
         )
+
+    def attach_image(self, path: str) -> None:
+        """Remember the user's uploaded photo (per session) for the outcrop tools."""
+        self.context_manager.set_context("last_image", path)
+
+    # Tools whose heavy inputs live in per-session context rather than in the
+    # LLM's arguments: (tool name, parameter name, context key).
+    _CONTEXT_INPUTS = (
+        ("interpret_outcrop", "image_path", "last_image"),
+        ("outcrop_to_seismic", "image_path", "last_image"),
+        ("outcrop_to_model", "interpretation", "last_outcrop"),
+        ("synthetic_section", "model", "last_earth_model"),
+    )
+
+    def _inject_context_inputs(self, tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, Any]:
+        """Fill omitted context-resident parameters from the session context."""
+        filled = dict(tool_input)
+        for name, param, key in self._CONTEXT_INPUTS:
+            if name == tool_name and filled.get(param) is None:
+                value = self.context_manager.get_context(key)
+                if value is not None:
+                    filled[param] = value
+                else:
+                    filled.pop(param, None)
+        return filled
 
     def _create_system_prompt(self) -> str:
         """
@@ -91,6 +118,10 @@ Available tools:
 - saturation_sweep: Sweeps water saturation Sw for one rock (porosity & clay volume) and plots the Vp/Vs/AI saturation curves (the fluid line) under Reuss or Brie mixing — useful for fluid-feasibility / DHI sensitivity.
 - run_sweep: Sweep another workflow recipe over a grid of parameter values (cartesian product) and collect one scalar metric per run — returns a results table, summary statistics, a coverage report, and an aggregate plot (line for 1 parameter, heatmap for 2). Use for sensitivity / scenario analysis across ranges of porosity, clay, fluid, saturation, or frequency.
 - petro_to_synthetic: N-layer synthetic seismogram from petrophysics — predicts each layer's elastic properties from porosity/clay/fluid (Han 1986 + Gassmann), stacks them with their thicknesses, and returns per-layer properties, interface reflectivities, amplitude metrics, and a layer-model/reflectivity/trace plot.
+- interpret_outcrop: Interprets the user's uploaded outcrop photo with a vision model into facies regions (lithology each) plus a scale estimate with confidence, and shows an overlay plot. Use it when a message starts with "[image attached".
+- outcrop_to_model: Builds a 2-D elastic earth model from the latest outcrop interpretation on a shale background; takes height_m (overrides the photo's scale; required if none was found) and per-region overrides (lithology / fluid / porosity / vclay keyed by region id or label). Re-run it for corrections — no vision call needed.
+- synthetic_section: Convolves the latest 2-D earth model into a synthetic seismic section (wavelet frequency, angle, Shuey/Zoeppritz, time or depth domain) and plots it as an image, wiggle, or both.
+- outcrop_to_seismic: One-shot photo → interpretation → 2-D model → seismic section (with both plots). Use when the user uploads a photo and asks directly for the seismic image; use the staged tools when they want to check or correct the interpretation first.
 
 Guidelines:
 1. Be helpful and concise in your responses
@@ -98,6 +129,8 @@ Guidelines:
 3. If you don't have enough information to use a tool correctly, ask follow-up questions
 4. For seismic questions, provide educational explanations
 5. When using tools, explain what you're doing and interpret the results
+6. A user message beginning "[image attached: ...]" means a photo was uploaded this turn: call interpret_outcrop (or outcrop_to_seismic if they ask directly for the seismic response). Never pass image_path, interpretation or model arguments yourself — they are supplied automatically.
+7. After interpret_outcrop, report the regions and the scale estimate WITH its confidence, and ask the user to confirm or correct the height before building the model if the confidence is low or no scale was found.
 
 Tool results and plots:
 - Tool results are compacted before you see them: long numeric arrays appear as summaries like "<61 values, min=..., max=...>".
@@ -329,6 +362,8 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
         Returns:
             bool: True if this should use RAG
         """
+        if user_input.lstrip().startswith("[image attached"):
+            return False  # an uploaded photo is always a tool request
         try:
             # Use LLM for intent classification
             return self._classify_intent_with_llm(user_input)
@@ -715,7 +750,8 @@ within the constraints above."""
             })
 
             try:
-                tool_input = self._parse_tool_input(tool_input_str)
+                tool_input = self._inject_context_inputs(
+                    tool_name, self._parse_tool_input(tool_input_str))
                 tool_result = self.tool_manager.process_tool_call(tool_name, tool_input)
                 messages.append({
                     "role": "tool",
@@ -768,16 +804,25 @@ within the constraints above."""
         results). Deduped, order-preserving. Only a TOP-LEVEL "image_path" is
         collected — nested dicts are not recursed (every current recipe returns
         a single top-level composite plot; revisit if one ever nests plots).
+        A top-level "extra_image_paths" list (outcrop_to_seismic's overlay) is
+        collected too. A dict's "image_path" is skipped when it equals the
+        session's last_image: interpret_outcrop's result echoes the user's
+        uploaded photo under that same key, and that is not a generated plot.
         """
-        path = None
+        last_image = self.context_manager.get_context("last_image")
+        paths = []
         if isinstance(tool_result, str) and tool_result.endswith(".png"):
-            path = tool_result
+            paths.append(tool_result)
         elif isinstance(tool_result, dict):
             p = tool_result.get("image_path")
-            if isinstance(p, str) and p.endswith(".png"):
-                path = p
-        if path is not None and path not in collected:
-            collected.append(path)
+            if isinstance(p, str) and p.endswith(".png") and p != last_image:
+                paths.append(p)
+            for extra in tool_result.get("extra_image_paths") or []:
+                if isinstance(extra, str) and extra.endswith(".png"):
+                    paths.append(extra)
+        for path in paths:
+            if path not in collected:
+                collected.append(path)
 
     def _handle_automatic_chaining(self, tool_name: str, tool_input: Dict[str, Any], tool_result: Any) -> Optional[Dict[str, Any]]:
         """
@@ -845,6 +890,22 @@ within the constraints above."""
                     "ai": last["acoustic_impedance"],
                     "si": last["shear_impedance"],
                     "fluid_type": last.get("fluid_type", "water"),
+                }
+            elif tool_name == "interpret_outcrop":
+                last = self.context_manager.get_context("last_outcrop")
+                if not last:
+                    return None
+                plot_input = {"interpretation": last}
+            elif tool_name == "synthetic_section":
+                last = self.context_manager.get_context("last_section")
+                if not (last and "section" in last and "parameters" in last):
+                    return None
+                plot_input = {
+                    "section": last["section"],
+                    "parameters": last["parameters"],
+                    "axis": last.get("axis"),
+                    "model": self.context_manager.get_context("last_earth_model"),
+                    "display": (last.get("input_params") or {}).get("display", "image"),
                 }
             else:
                 return None
@@ -970,6 +1031,40 @@ within the constraints above."""
                         "fluid_type": tool_input.get("fluid_type", "water"),
                         "parameters": tool_input
                     })
+
+            elif tool_name == "interpret_outcrop":
+                if isinstance(tool_result, dict) and "regions" in tool_result:
+                    self.context_manager.set_context("last_outcrop", tool_result)
+
+            elif tool_name == "outcrop_to_model":
+                if isinstance(tool_result, dict) and "facies" in tool_result:
+                    self.context_manager.set_context("last_earth_model", tool_result)
+
+            elif tool_name == "synthetic_section":
+                if isinstance(tool_result, tuple) and len(tool_result) == 3:
+                    axis, section, parameters = tool_result
+                    self.context_manager.set_context("last_section", {
+                        "axis": axis,
+                        "section": section,
+                        "parameters": parameters,
+                        "input_params": tool_input
+                    })
+
+            elif tool_name == "outcrop_to_seismic":
+                if isinstance(tool_result, dict):
+                    self.context_manager.set_context("last_workflow_result", tool_result)
+                    if tool_result.get("interpretation") is not None:
+                        self.context_manager.set_context("last_outcrop", tool_result["interpretation"])
+                    if tool_result.get("model") is not None:
+                        self.context_manager.set_context("last_earth_model", tool_result["model"])
+                    sec = tool_result.get("section")
+                    if isinstance(sec, dict):
+                        self.context_manager.set_context("last_section", {
+                            "axis": sec.get("axis"),
+                            "section": sec.get("section"),
+                            "parameters": sec.get("parameters"),
+                            "input_params": tool_input
+                        })
 
             elif tool_name in WORKFLOW_NAMES:
                 if isinstance(tool_result, dict):
