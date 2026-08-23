@@ -1,6 +1,11 @@
+import os
+from typing import Optional
+
 import gradio as gr
 from core.chatbot_tool_use import SeismicChatBotToolUse
 from config.example_prompts import EXAMPLE_PROMPTS, search_prompts, get_random_prompts
+from config.settings import SEISMIC_UPLOAD_DIR, MAX_IMAGE_MB
+from tools.image_safety import stage_upload
 
 
 def append_bot_response(chat_history, response):
@@ -23,6 +28,27 @@ def append_bot_response(chat_history, response):
     return chat_history
 
 
+DEFAULT_IMAGE_REQUEST = "Interpret this outcrop photo."
+
+
+def prepare_turn(message: str, image_path: Optional[str], session_bot,
+                 upload_dir: str, max_mb: float) -> str:
+    """Stage an uploaded photo into the session sandbox and mark the message.
+
+    The staged path is stored on the session (context key ``last_image``) so
+    the outcrop tools can pick it up without the LLM ever handling a path.
+    Returns the text to send to the chatbot.
+    """
+    message = (message or "").strip()
+    if not image_path:
+        return message
+    staged = stage_upload(image_path, upload_dir, session_bot.session_id, max_mb)
+    session_bot.attach_image(staged)
+    if not message:
+        message = DEFAULT_IMAGE_REQUEST
+    return f"[image attached: {os.path.basename(staged)}] {message}"
+
+
 def create_chat_interface():
     """Create and return the Gradio chat interface using the tool use pattern."""
     # Build the heavy, conversation-stateless components ONCE. Each browser
@@ -30,25 +56,27 @@ def create_chat_interface():
     # new_session(), held in gr.State so users never share conversation state.
     base_bot = SeismicChatBotToolUse()
 
-    def respond(message, chat_history, session_bot):
-        """Process a user message using a per-session chatbot (isolated context)."""
+    def respond(message, image_path, chat_history, session_bot):
+        """Process a user message (+ optional photo) using a per-session chatbot."""
         if session_bot is None:
             session_bot = base_bot.new_session()
 
         chat_history = chat_history or []
-        chat_history.append([message, None])
+        shown = message or ("(photo uploaded)" if image_path else "")
+        chat_history.append([shown, None])
         try:
-            response = session_bot.process_single_input(message)
+            text = prepare_turn(message, image_path, session_bot, SEISMIC_UPLOAD_DIR, MAX_IMAGE_MB)
+            response = session_bot.process_single_input(text)
             chat_history = append_bot_response(chat_history, response)
 
             # Per-session token usage for display
             token_usage = session_bot.context_manager.get_token_usage()
             token_str = f"Prompt: {token_usage['prompt_tokens']} | Completion: {token_usage['completion_tokens']} | Total: {token_usage['total_tokens']}"
-            return "", chat_history, token_str, session_bot
+            return "", None, chat_history, token_str, session_bot
 
         except Exception as e:
             chat_history[-1][1] = f"Error processing request: {str(e)}"
-            return "", chat_history, "", session_bot
+            return "", None, chat_history, "", session_bot
     
     def copy_prompt(prompt_text):
         """Copy prompt to clipboard and return it for the textbox."""
@@ -93,6 +121,7 @@ def create_chat_interface():
         - Calculating AVO reflectivity using Zoeppritz and Shuey equations
         - Answering questions about seismic properties
         - Explaining seismic modeling concepts
+        - Interpreting an uploaded **outcrop photo** into a 2-D earth model and synthetic seismic section
 
         **💡 Tip:** Use the example prompts below to get started quickly!
         """)
@@ -100,6 +129,8 @@ def create_chat_interface():
         with gr.Row():
             with gr.Column(scale=3):
                 chat_display = gr.Chatbot(height=600)
+                photo = gr.Image(type="filepath", label="Outcrop photo (optional — jpg/png/webp)",
+                                 height=160)
                 with gr.Row():
                     msg = gr.Textbox(
                         placeholder="Ask a question or request an action...",
@@ -222,8 +253,10 @@ def create_chat_interface():
                 - "Calculate Zoeppritz reflectivity for gas sand"
                 """)
         
-        submit.click(respond, [msg, chat_display, session_state], [msg, chat_display, token_usage_display, session_state])
-        msg.submit(respond, [msg, chat_display, session_state], [msg, chat_display, token_usage_display, session_state])
+        submit.click(respond, [msg, photo, chat_display, session_state],
+                     [msg, photo, chat_display, token_usage_display, session_state])
+        msg.submit(respond, [msg, photo, chat_display, session_state],
+                   [msg, photo, chat_display, token_usage_display, session_state])
     
     return demo
 
