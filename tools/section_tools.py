@@ -220,14 +220,42 @@ def _axis_from_parameters(parameters: Dict[str, Any]) -> np.ndarray:
     return np.arange(int(parameters["nt"])) * float(parameters["dt"])
 
 
-def plot_seismic_section(section, parameters, axis=None, model=None, display="image",
-                         output_path=None) -> str:
-    """Model (AI, depth) | section as variable-density image, wiggle, or both."""
+def _crop_ylims(model, parameters, axis, domain):
+    """Model/section ylim cropped to the outcrop extent +/- one dominant
+    wavelength, or (None, None) when `model` doesn't carry the outcrop
+    extent (`image_top_m`/`height_m`) — e.g. a plain hand-built grid, which
+    keeps the existing full-extent behaviour."""
+    if model is None or "image_top_m" not in model or "height_m" not in model:
+        return None, None
+    image_top = float(model["image_top_m"]); height = float(model["height_m"])
+    z = np.asarray(model["z"], dtype=float)
+    wavelet_freq = parameters.get("wavelet_freq") or 0.0
+    vp_top = float(np.asarray(model["vp"])[0, 0])
+    margin_m = (vp_top / wavelet_freq) if wavelet_freq else 0.0
+    model_ylim = (image_top + height + margin_m, max(image_top - margin_m, z[0]))
+    if domain == "depth":
+        return model_ylim, model_ylim
+
+    dz = float(model["dz"]); vp = np.asarray(model["vp"], dtype=float)
+    nz = vp.shape[0]
+    pad_time = float(parameters.get("pad_time", 0.0))
+    twt = pad_time + np.cumsum(2000.0 * dz / vp, axis=0)
+    row_top = int(round(image_top / dz))
+    row_bot = min(nz - 1, int(round((image_top + height) / dz)))
+    t_top = float(twt[row_top, :].min())
+    t_bot = float(twt[row_bot, :].max())
+    margin_ms = (1000.0 / wavelet_freq) if wavelet_freq else 0.0
+    section_ylim = (min(t_bot + margin_ms, axis[-1]), max(t_top - margin_ms, axis[0]))
+    return model_ylim, section_ylim
+
+
+def _build_section_figure(section, parameters, axis=None, model=None, display="image"):
+    """Build the model/image/wiggle panel figure. Returns (fig, axes_by_kind)
+    with axes_by_kind mapping each panel present ("model", "image", "wiggle")
+    to its Axes, so callers (plot_seismic_section, tests) can inspect or
+    finish the figure without re-deriving the panel layout."""
     if display not in ("image", "wiggle", "both"):
         raise ValueError("display must be 'image', 'wiggle' or 'both'")
-    if output_path is None:
-        fd, output_path = tempfile.mkstemp(suffix=".png")
-        os.close(fd)
     section = np.asarray(section, dtype=float)
     nsamp, nx = section.shape
     axis = np.asarray(axis, dtype=float) if axis is not None else _axis_from_parameters(parameters)
@@ -240,6 +268,8 @@ def plot_seismic_section(section, parameters, axis=None, model=None, display="im
     panels = (["model"] if model is not None else []) + (["image", "wiggle"] if display == "both" else [display])
     fig, axes = plt.subplots(1, len(panels), figsize=(5 * len(panels), 7), squeeze=False)
     axes = axes[0]
+    model_ylim, section_ylim = _crop_ylims(model, parameters, axis, domain)
+    axes_by_kind: Dict[str, Any] = {}
     for ax, kind in zip(axes, panels):
         if kind == "model":
             ai = np.asarray(model["vp"]) * np.asarray(model["rho"])
@@ -249,11 +279,15 @@ def plot_seismic_section(section, parameters, axis=None, model=None, display="im
             fig.colorbar(im, ax=ax, label="AI (m/s·g/cc)")
             ax.set_ylabel("Depth (m)"); ax.set_xlabel("Distance (m)")
             ax.set_title("Earth model (acoustic impedance)")
+            if model_ylim is not None:
+                ax.set_ylim(*model_ylim)
         elif kind == "image":
             ax.imshow(section, aspect="auto", cmap="seismic", vmin=-amax, vmax=amax,
                       extent=[x[0], x[-1], axis[-1], axis[0]])
             ax.set_ylabel(ylabel); ax.set_xlabel("Distance (m)")
             ax.set_title("Synthetic section")
+            if section_ylim is not None:
+                ax.set_ylim(*section_ylim)
         else:  # wiggle
             step = _wiggle_step(nx)
             data = section[:, ::step].T                 # ntraces x nsamp
@@ -264,10 +298,23 @@ def plot_seismic_section(section, parameters, axis=None, model=None, display="im
             ax.set_ylabel(ylabel); ax.set_xlabel("Distance (m)")
             ax.set_title(f"Synthetic section (wiggle, every {step} trace(s))" if step > 1
                          else "Synthetic section (wiggle)")
+            if section_ylim is not None:
+                ax.set_ylim(*section_ylim)
+        axes_by_kind[kind] = ax
     title = f"{parameters.get('wavelet_label', '')}"
     if parameters.get("angle", 0):
         title += f" — {parameters['angle']:g}°, {parameters['method']}"
     fig.suptitle(title.strip(" —"))
+    return fig, axes_by_kind
+
+
+def plot_seismic_section(section, parameters, axis=None, model=None, display="image",
+                         output_path=None) -> str:
+    """Model (AI, depth) | section as variable-density image, wiggle, or both."""
+    fig, _ = _build_section_figure(section, parameters, axis=axis, model=model, display=display)
+    if output_path is None:
+        fd, output_path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
     fig.tight_layout()
     fig.savefig(output_path, dpi=200, bbox_inches="tight")
     plt.close(fig)

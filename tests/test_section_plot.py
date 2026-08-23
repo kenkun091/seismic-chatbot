@@ -1,11 +1,12 @@
 """Depth conversion, the model adapter, and plot_seismic_section."""
 import os
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 
 from tools.section_tools import (create_synthetic_section, synthetic_section_from_model,
-                                 plot_seismic_section, MAX_WIGGLE_TRACES)
+                                 plot_seismic_section, _build_section_figure, MAX_WIGGLE_TRACES)
 
 
 def _single_interface(nx=3, nz=200, dz=0.5, z_int=60.0):
@@ -86,3 +87,45 @@ def test_wiggle_decimation_step():
     from tools.section_tools import _wiggle_step
     assert _wiggle_step(50) == 1 and _wiggle_step(MAX_WIGGLE_TRACES) == 1
     assert _wiggle_step(MAX_WIGGLE_TRACES + 1) == 2 and _wiggle_step(401) == 6
+
+
+def _padded_model_with_image(nx=3, dz=1.0, npad=300, height=20.0, dx=25.0):
+    """A model shaped like an outcrop_to_model result: a thin 'photographed'
+    image section (height_m tall) sandwiched between large background pads,
+    so the model panel/section is dominated by padding — exactly the case
+    #3's cropping is for."""
+    nz_img = int(round(height / dz))
+    nz = nz_img + 2 * npad
+    vp = np.full((nz, nx), 2000.0); vp[npad:npad + nz_img] = 3000.0
+    vs = vp / 2.0
+    rho = np.full((nz, nx), 2.2); rho[npad:npad + nz_img] = 2.4
+    z = (np.arange(nz) + 0.5) * dz
+    x = np.arange(nx) * dx
+    return {"vp": vp, "vs": vs, "rho": rho, "z": z, "x": x, "dz": dz, "dx": dx,
+            "image_top_m": float(npad * dz), "height_m": float(height)}
+
+
+@pytest.mark.parametrize("domain", ["depth", "time"])
+def test_section_axis_crops_to_outcrop_extent(domain):
+    model = _padded_model_with_image()
+    axis, sec, par = synthetic_section_from_model(model, wavelet_freq=30.0, domain=domain)
+    fig, axes_by_kind = _build_section_figure(sec, par, axis=axis, model=model, display="image")
+    try:
+        ylim = axes_by_kind["image"].get_ylim()
+        cropped_span = abs(ylim[0] - ylim[1])
+        full_span = abs(axis[-1] - axis[0])
+        assert cropped_span < 0.4 * full_span
+    finally:
+        plt.close(fig)
+
+
+def test_model_lacking_image_extent_keeps_full_axis():
+    """A plain grid (no image_top_m/height_m) must not be cropped."""
+    m = _model()
+    axis, sec, par = synthetic_section_from_model(m, domain="depth")
+    fig, axes_by_kind = _build_section_figure(sec, par, axis=axis, model=m, display="image")
+    try:
+        ylim = axes_by_kind["image"].get_ylim()
+        assert sorted(ylim) == pytest.approx(sorted((axis[0], axis[-1])))
+    finally:
+        plt.close(fig)
