@@ -174,19 +174,32 @@ tools hand results through `ContextManager` so only the first touches a network:
    `LITHOLOGY_TABLE` routes clastics through `predict_layer` (Han 1986 + Gassmann) and
    carbonates/coal/salt/basalt through fixed literature Vp/Vs/ρ (petro overrides on those
    raise). Shale/mudstone default `vclay` is **0.50**. Rasterizes polygons with
-   `matplotlib.path.Path` onto an nz≈400 × `num_traces` grid, pads 1.5 background
-   wavelengths above/below. Stored as `last_earth_model`.
+   `matplotlib.path.Path` onto an nz≈400-row (`nz_target`) × `num_traces` grid for the
+   photographed part; the returned grid (`facies`/`vp`/`vs`/`rho`, `nz`) then *adds*
+   `2 * npad` background padding rows above and below that (`pad_m`, default 1.5
+   background wavelengths, converted to rows via `dz`), so `nz` > `nz_target`. Stored as
+   `last_earth_model`.
 3. `synthetic_section` (`tools/section_tools.py::synthetic_section_from_model`) — generic
    2-D convolutional model over **any** `(vp, vs, rho, dz, dx)` grid: per-column
    depth→TWT, RC at every property change (acoustic / Shuey / Zoeppritz; post-critical
    NaNs → 0 with a warning), superposition onto the `dt` grid (default **1 ms**;
    `parameters["max_abs_amplitude"]` is always measured on the time-domain section), Ricker
    or Ormsby. `domain="depth"` returns a column-wise depth-converted section. Oracle-tested
-   per column against `create_synthetic_seismogram`. Auto-plots `plot_seismic_section`
-   (`display` = image / wiggle / both; wiggle decimated to ≤ 80 traces). Stored as
-   `last_section`.
+   per column against `create_synthetic_seismogram`. `display` (`"image"`/`"wiggle"`/`"both"`)
+   is a `synthetic_section_from_model` parameter, not just a plot arg — it's stamped onto
+   `parameters["display"]` so the auto-plotted `plot_seismic_section` (wiggle decimated to
+   ≤ 80 traces) renders it even though the LLM never passes `display` on the staged
+   (context-filled) call path. Stored as `last_section`.
 4. `outcrop_to_seismic` (`workflows/recipes/`) — one-shot chain; its result also populates
    the three staged context keys, so corrections after a one-shot run re-use steps 2–3.
+
+There are **two independent paddings**: `outcrop_to_model`'s `pad_m` (background rows added
+to the depth grid, above) and `create_synthetic_section`'s `pad_time` (quiet time added
+above/below in the seismic time/depth axis, default 50 ms). When `plot_seismic_section` is
+given a `model` carrying `image_top_m`/`height_m` (an `outcrop_to_model` result), it crops
+the model and section panels' y-axis to the outcrop extent ± one dominant wavelength instead
+of showing the full padded grid; a plain hand-built grid without those keys keeps the full
+extent.
 
 The chatbot fills `image_path` / `interpretation` / `model` from context
 (`_inject_context_inputs`) — the LLM never passes them. A message starting with

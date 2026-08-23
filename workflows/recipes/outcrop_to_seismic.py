@@ -18,7 +18,7 @@ def outcrop_to_seismic(image_path=None, height_m=None, overrides=None,
                        background_lithology=None, wavelet_freq=30.0, angle=0.0,
                        method="shuey", domain="time", display="image",
                        num_traces=101, vision_client=None):
-    """Returns a JSON-friendly dict (see tests). Only interpret_outcrop calls the VLM."""
+    """Returns a dict (arrays included; see tests). Only interpret_outcrop calls the VLM."""
     interp = interpret_outcrop(image_path, vision_client=vision_client)
     overlay = plot_outcrop_interpretation(interp)
     model = outcrop_to_model(interp, height_m=height_m, overrides=overrides,
