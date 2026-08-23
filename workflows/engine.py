@@ -15,6 +15,7 @@ from workflows.recipes.tuning import tuning
 from workflows.recipes.eei_optimal_chi_petro import eei_optimal_chi_petro
 from workflows.recipes.saturation_sweep import saturation_sweep
 from workflows.recipes.petro_to_synthetic import petro_to_synthetic
+from workflows.recipes.outcrop_to_seismic import outcrop_to_seismic
 from workflows.sweep import run_sweep
 
 
@@ -210,6 +211,39 @@ WORKFLOW_REGISTRY = [
         required=["phit", "vclay", "thickness"],
         defaults={"fluids": None, "labels": None, "wavelet_freq": 30.0,
                   "angle": 0.0, "method": "shuey"},
+        auto_plot=None,
+    ),
+    WorkflowSpec(
+        name="outcrop_to_seismic",
+        fn=outcrop_to_seismic,
+        description=(
+            "One-shot outcrop photo to synthetic seismic section: interprets the uploaded "
+            "photo with a vision model (facies regions + scale), builds a 2-D elastic model "
+            "on a shale background (Han 1986/Gassmann for clastics), and convolves it into a "
+            "seismic section (image or wiggle, time or depth). Use when the user uploads a "
+            "photo and asks directly for the seismic response; use the staged tools "
+            "(interpret_outcrop / outcrop_to_model / synthetic_section) when they want to "
+            "check or correct the interpretation first."
+        ),
+        params={
+            "image_path": {"type": "string",
+                           "description": "Leave empty — supplied automatically from the uploaded photo."},
+            "height_m": {"type": "number",
+                         "description": "Exposure height in metres (overrides the photo's scale estimate)."},
+            "overrides": {"type": "object",
+                          "description": "Per-region corrections keyed by id or label; fields lithology, fluid, porosity, vclay."},
+            "background_lithology": {"type": "string", "description": "Background lithology (default shale)."},
+            "wavelet_freq": {"type": "number", "description": "Ricker dominant frequency in Hz (default 30)."},
+            "angle": {"type": "number", "description": "Incidence angle in degrees (default 0)."},
+            "method": {"type": "string", "description": "'shuey' (default) or 'zoeppritz'."},
+            "domain": {"type": "string", "description": "'time' (default) or 'depth'."},
+            "display": {"type": "string", "description": "'image' (default), 'wiggle', or 'both'."},
+            "num_traces": {"type": "integer", "description": "Traces across the outcrop width (default 101)."},
+        },
+        required=[],
+        defaults={"image_path": None, "height_m": None, "overrides": None,
+                  "background_lithology": None, "wavelet_freq": 30.0, "angle": 0.0,
+                  "method": "shuey", "domain": "time", "display": "image", "num_traces": 101},
         auto_plot=None,
     ),
 ]
