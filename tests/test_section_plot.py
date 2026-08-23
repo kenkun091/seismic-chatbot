@@ -129,3 +129,25 @@ def test_model_lacking_image_extent_keeps_full_axis():
         assert sorted(ylim) == pytest.approx(sorted((axis[0], axis[-1])))
     finally:
         plt.close(fig)
+
+
+@pytest.mark.parametrize("domain", ["depth", "time"])
+@pytest.mark.parametrize("display", ["image", "wiggle", "both"])
+def test_axes_orient_downward_and_model_x_extent(domain, display):
+    """Every section/model axis must read depth/time increasing downward
+    (ylim[0] > ylim[1], matplotlib's (bottom, top) convention), and the
+    model panel's x-extent must span the model's own x array — for every
+    display mode and domain, with the outcrop-extent crop from #3 active."""
+    model = _padded_model_with_image()
+    axis, sec, par = synthetic_section_from_model(model, wavelet_freq=30.0, domain=domain)
+    fig, axes_by_kind = _build_section_figure(sec, par, axis=axis, model=model, display=display)
+    try:
+        for kind, ax in axes_by_kind.items():
+            ylim = ax.get_ylim()
+            assert ylim[0] > ylim[1], f"{kind} panel ylim not downward: {ylim}"
+        model_ax = axes_by_kind["model"]
+        xlim = model_ax.get_xlim()
+        x = model["x"]
+        assert xlim == pytest.approx((x[0], x[-1]))
+    finally:
+        plt.close(fig)
