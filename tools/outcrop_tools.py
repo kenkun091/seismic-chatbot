@@ -143,7 +143,18 @@ def validate_interpretation(data: Any) -> Dict[str, Any]:
         seen_ids.add(rid)
         next_id = max(next_id, rid + 1)
         lith = _norm_lithology(r.get("lithology"))
-        gtype, pts = _points_from_geometry(r.get("geometry"), rid)
+        geom = r.get("geometry")
+        if geom is None and isinstance(r.get("points"), list):
+            # Already-normalized region (e.g. re-validating validate_interpretation's own
+            # output): "geometry" was replaced by "points"/"geometry_type". Rebuild a
+            # geometry dict from them so re-validation is idempotent.
+            geom = {"type": "polygon", "points": r["points"]}
+            gtype_override = str(r.get("geometry_type") or "polygon")
+        else:
+            gtype_override = None
+        gtype, pts = _points_from_geometry(geom, rid)
+        if gtype_override is not None:
+            gtype = gtype_override
         regions.append({
             "id": rid,
             "label": str(r.get("label") or lith),
@@ -423,17 +434,7 @@ def outcrop_to_model(interpretation: Optional[Dict[str, Any]] = None,
     if interpretation is None:
         raise ValueError("Interpret an outcrop photo first (interpret_outcrop) — "
                          "there is no interpretation to build a model from.")
-    # `interpretation` is usually already a validated OutcropInterpretation (the
-    # return value of interpret_outcrop() or validate_interpretation() itself,
-    # e.g. from the tests). validate_interpretation() is not idempotent — its
-    # output regions carry geometry_type/points, not the raw "geometry" field —
-    # so re-validating something already validated would raise spuriously.
-    # Only run raw validation when the input isn't already in validated shape.
-    regs = interpretation.get("regions") if isinstance(interpretation, dict) else None
-    already_validated = (isinstance(regs, list)
-                         and all(isinstance(r, dict) and "geometry_type" in r and "points" in r
-                                 for r in regs))
-    interp = interpretation if already_validated else validate_interpretation(interpretation)
+    interp = validate_interpretation(interpretation)
 
     # --- scale policy: user > vision > ask
     if height_m is not None:

@@ -151,3 +151,12 @@ def test_resolve_direct_route_rejects_petro_overrides():
 def test_resolve_cover_rejected():
     with pytest.raises(ValueError, match="cover"):
         resolve_lithology("cover")
+
+
+def test_validate_is_idempotent():
+    once = validate_interpretation(_interp(regions=[
+        _region(geometry={"type": "band", "y_top": 0.2, "y_bottom": 0.35}),
+        _region(id=2, label="lens", porosity=0.3)]))
+    twice = validate_interpretation(once)
+    assert twice == once
+    assert twice["regions"][0]["geometry_type"] == "band"
