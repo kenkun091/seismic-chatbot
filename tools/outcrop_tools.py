@@ -218,3 +218,146 @@ def resolve_lithology(lithology: str, porosity: Optional[float] = None,
     layer = predict_layer(phit, vcl, fluid=fl, label=key)
     return {"vp": float(layer.vp), "vs": float(layer.vs), "rho": float(layer.rho),
             "route": "han", "phit": phit, "vclay": vcl, "fluid": fl}
+
+
+# ---------------------------------------------------------------------------
+# Vision interpretation
+# ---------------------------------------------------------------------------
+
+_ROCK_NAMES = sorted(k for k, v in LITHOLOGY_TABLE.items() if v["route"] != "background")
+
+OUTCROP_PROMPT = f"""You are a field geologist interpreting an outcrop photograph for seismic forward modeling.
+
+Return ONLY a JSON object (no prose, no markdown fences) with this exact shape:
+{{
+  "regions": [
+    {{"id": 1, "label": "short name", "lithology": "<one of: {', '.join(_ROCK_NAMES)}, cover>",
+     "geometry": {{"type": "polygon", "points": [[x, y], [x, y], [x, y]]}},
+     "porosity": 0.2, "vclay": 0.1, "confidence": "low|medium|high", "notes": "texture, bedding"}}
+  ],
+  "scale": {{"estimated_height_m": 30, "reference": "what you measured against", "confidence": "low|medium|high"}},
+  "background_lithology": "shale",
+  "mode": "polygons"
+}}
+
+Rules:
+- Coordinates are fractions of the image: x from 0 (left) to 1 (right), y from 0 (top) to 1 (bottom).
+- Outline every distinct rock body or bed as a polygon (3+ points, clockwise). If the exposure is a simple
+  horizontal layer-cake, you may instead use "mode": "bands" with geometry {{"type": "band", "y_top": 0.2, "y_bottom": 0.35}}.
+- Everything you do not outline is treated as the background lithology (default shale).
+- Mark sky, vegetation, soil, talus, water, people and equipment as lithology "cover" so they are ignored.
+- "porosity" and "vclay" are optional fractions (0-1); include them only when texture (grain size, sorting,
+  cementation, mud content) justifies a value different from a typical rock of that lithology.
+- Scale: look for a scale bar, hammer (~0.3 m), person (~1.7 m), lens cap, vehicle, or any labelled dimension,
+  and estimate the total height of the photographed exposure in metres. If nothing gives a reference, set
+  "estimated_height_m": null and "confidence": "low". Never invent a scale.
+- Use integer ids starting at 1. Keep labels short.
+"""
+
+
+def extract_json(text: str) -> Dict[str, Any]:
+    """Pull the first {...} JSON object out of model text (fences/prose tolerated)."""
+    if not isinstance(text, str):
+        raise ValueError("vision model returned no text")
+    cleaned = re.sub(r"```(?:json)?", "", text)
+    start, end = cleaned.find("{"), cleaned.rfind("}")
+    if start < 0 or end <= start:
+        raise ValueError("no JSON object found in the vision model's answer")
+    try:
+        return json.loads(cleaned[start:end + 1])
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"vision model answer is not valid JSON: {exc}")
+
+
+def _summarize(interp: Dict[str, Any]) -> str:
+    rocks = [r for r in interp["regions"] if r["lithology"] != "cover"]
+    parts = [f"{len(rocks)} rock region(s) on a {interp['background_lithology']} background"]
+    for r in rocks:
+        parts.append(f"#{r['id']} {r['label']} ({r['lithology']}, {r['confidence']})")
+    s = interp["scale"]
+    if s["estimated_height_m"] is None:
+        parts.append("scale: none found — please give the outcrop height in metres")
+    else:
+        parts.append(f"scale: ~{s['estimated_height_m']:g} m high from {s['reference'] or 'unknown reference'} "
+                     f"({s['confidence']} confidence)")
+    return "; ".join(parts)
+
+
+def interpret_outcrop(image_path: Optional[str] = None, vision_client=None,
+                      upload_dir: Optional[str] = None) -> Dict[str, Any]:
+    """Photo -> validated OutcropInterpretation via the vision LLM (one retry).
+
+    `image_path` is filled by the chatbot from the uploaded photo when omitted.
+    The user's free text is never injected into the vision prompt; guidance
+    goes through outcrop_to_model(overrides=...).
+    """
+    if not image_path:
+        raise ValueError("Please upload an outcrop photo first.")
+    base = upload_dir or SEISMIC_UPLOAD_DIR
+    path = safe_image_path(image_path, base, MAX_IMAGE_MB)
+    if vision_client is None:
+        from core.vision_client import build_vision_client
+        vision_client = build_vision_client()
+
+    img_bytes, mime = downscale_for_vision(path)
+    prompt = OUTCROP_PROMPT
+    last_err = None
+    interp = None
+    for _attempt in range(2):
+        text = vision_client.interpret_image(img_bytes, mime, prompt)
+        try:
+            interp = validate_interpretation(extract_json(text))
+            break
+        except ValueError as exc:
+            last_err = exc
+            prompt = (OUTCROP_PROMPT
+                      + f"\n\nYour previous answer was invalid: {exc}\n"
+                        "Return only the corrected JSON object.")
+    if interp is None:
+        raise ValueError(f"could not interpret image: {last_err}")
+
+    w, h = image_size(path)
+    interp["image_path"] = path
+    interp["image_size"] = [int(w), int(h)]
+    interp["summary"] = _summarize(interp)
+    return interp
+
+
+def plot_outcrop_interpretation(interpretation: Dict[str, Any],
+                                output_path: Optional[str] = None) -> str:
+    """Photo with semi-transparent facies polygons, ids, legend and scale note."""
+    if output_path is None:
+        fd, output_path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+    from PIL import Image
+    with Image.open(interpretation["image_path"]) as im:
+        img = np.asarray(im.convert("RGB"))
+    h, w = img.shape[:2]
+
+    fig, ax = plt.subplots(figsize=(10, 10 * h / float(w)))
+    ax.imshow(img)
+    used = {}
+    for r in interpretation["regions"]:
+        color = LITHOLOGY_COLORS.get(r["lithology"], "#ff00ff")
+        pts = np.array(r["points"]) * [w, h]
+        ax.add_patch(MplPolygon(pts, closed=True, facecolor=color, edgecolor="k",
+                                alpha=0.35 if r["lithology"] != "cover" else 0.15, lw=1.2))
+        cx, cy = pts.mean(axis=0)
+        ax.text(cx, cy, f"#{r['id']} {r['label']}", ha="center", va="center",
+                fontsize=8, color="k",
+                bbox=dict(boxstyle="round,pad=0.2", fc="white", alpha=0.7, lw=0))
+        used[r["lithology"]] = color
+    used.setdefault(interpretation["background_lithology"],
+                    LITHOLOGY_COLORS[interpretation["background_lithology"]])
+    handles = [MplPolygon([[0, 0], [1, 0], [1, 1]], facecolor=c, edgecolor="k", alpha=0.5,
+                          label=n) for n, c in used.items()]
+    ax.legend(handles=handles, loc="lower right", fontsize=8)
+    s = interpretation["scale"]
+    scale_txt = ("scale: not found" if s["estimated_height_m"] is None
+                 else f"~{s['estimated_height_m']:g} m high ({s['confidence']}, {s['reference'] or '?'})")
+    ax.set_title(f"Outcrop interpretation — background {interpretation['background_lithology']}; {scale_txt}")
+    ax.set_axis_off()
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
