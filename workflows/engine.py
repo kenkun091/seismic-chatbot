@@ -237,7 +237,7 @@ WORKFLOW_REGISTRY = [
             "angle": {"type": "number", "description": "Incidence angle in degrees (default 0)."},
             "method": {"type": "string", "description": "'shuey' (default) or 'zoeppritz'."},
             "domain": {"type": "string", "description": "'time' (default) or 'depth'."},
-            "display": {"type": "string", "description": "'image' (default), 'wiggle', or 'both'."},
+            "display": {"type": "string", "description": "'image' (default), 'wiggle', 'both', 'overlay' (wiggles on the photo), or 'overlay_image' (translucent color section on the photo)."},
             "num_traces": {"type": "integer", "description": "Traces across the outcrop width (default 101)."},
         },
         required=[],

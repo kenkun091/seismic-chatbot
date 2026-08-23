@@ -199,8 +199,9 @@ def synthetic_section_from_model(model: Optional[Dict[str, Any]] = None, wavelet
     for key in ("vp", "vs", "rho", "dz", "dx"):
         if key not in model:
             raise ValueError(f"model is missing {key!r}; expected an outcrop_to_model result")
-    if display not in ("image", "wiggle", "both"):
-        raise ValueError("display must be 'image', 'wiggle' or 'both'")
+    if display not in ("image", "wiggle", "both", "overlay", "overlay_image"):
+        raise ValueError("display must be 'image', 'wiggle', 'both', 'overlay' "
+                         "or 'overlay_image'")
     axis, section, parameters = create_synthetic_section(
         model["vp"], model["vs"], model["rho"], model["dz"], model["dx"],
         wavelet_freq=wavelet_freq, wv_type=wv_type,
@@ -249,13 +250,83 @@ def _crop_ylims(model, parameters, axis, domain):
     return model_ylim, section_ylim
 
 
+MAX_OVERLAY_TRACES = 40
+_PHOTO_KEYS = ("image_path", "image_top_m", "height_m", "width_m")
+
+
+def _overlay_figure(section, parameters, axis, model, display):
+    """Wiggles ('overlay') or a translucent color section ('overlay_image')
+    drawn on the outcrop photograph, depth-registered: the photo spans
+    [0, width_m] x [image_top_m, image_top_m + height_m] in metres and the
+    section is depth-converted column-by-column onto the same frame."""
+    if model is None or any(k not in model for k in _PHOTO_KEYS):
+        raise ValueError(
+            f"display {display!r} needs the outcrop photo model (image_path and "
+            f"extent) — interpret a photo and build the model with "
+            f"interpret_outcrop + outcrop_to_model first")
+    from PIL import Image
+
+    top = float(model["image_top_m"]); h = float(model["height_m"])
+    w = float(model["width_m"]); dz = float(model["dz"])
+    domain = parameters.get("domain", "time")
+    section = np.asarray(section, dtype=float)
+    if domain == "depth":
+        dsec = section
+        zfull = np.asarray(axis, dtype=float)
+    else:
+        dsec = depth_convert(section, axis, model["vp"], dz,
+                             float(parameters.get("pad_time", 0.0)))
+        zfull = np.asarray(model["z"], dtype=float)
+    sel = (zfull >= top) & (zfull <= top + h)
+    sub = dsec[sel]
+    zs = zfull[sel]
+    nx = sub.shape[1]
+    dx = float(parameters["dx"])
+    x = np.arange(nx) * dx
+    amax = float(np.max(np.abs(sub))) or 1.0
+
+    with Image.open(model["image_path"]) as im:
+        img = np.asarray(im.convert("RGB"))
+    fig, ax = plt.subplots(figsize=(12, max(3.0, 12.0 * h / w) if w else (12, 6)))
+    ax.imshow(img, extent=[0.0, w, top + h, top], aspect="auto")
+
+    if display == "overlay":
+        step = max(1, int(np.ceil(nx / float(MAX_OVERLAY_TRACES))))
+        spacing = dx * step
+        for i, xpos in enumerate(x[::step]):
+            exc = 0.9 * spacing * (sub[:, ::step][:, i] / amax)
+            ax.plot(xpos + exc, zs, color="black", lw=0.9)
+            ax.fill_betweenx(zs, xpos, xpos + exc, where=exc > 0,
+                             color="black", alpha=0.55)
+        ax.set_title("Synthetic wiggles on outcrop photo"
+                     + (f" (every {step} trace(s))" if step > 1 else ""))
+    else:  # overlay_image
+        masked = np.ma.masked_where(np.abs(sub) < 0.05 * amax, sub)
+        ax.imshow(masked, extent=[x[0] - dx / 2.0, x[-1] + dx / 2.0,
+                                  zs[-1] + dz / 2.0, zs[0] - dz / 2.0],
+                  cmap="seismic", vmin=-amax, vmax=amax, alpha=0.45, aspect="auto")
+        ax.set_title("Synthetic section (color) on outcrop photo")
+
+    ax.set_xlim(0.0, w)
+    ax.set_ylim(top + h, top)
+    ax.set_xlabel("Distance (m)")
+    ax.set_ylabel("Depth (m)")
+    fig.suptitle(parameters.get("wavelet_label", ""))
+    return fig, {display: ax}
+
+
 def _build_section_figure(section, parameters, axis=None, model=None, display="image"):
     """Build the model/image/wiggle panel figure. Returns (fig, axes_by_kind)
     with axes_by_kind mapping each panel present ("model", "image", "wiggle")
     to its Axes, so callers (plot_seismic_section, tests) can inspect or
     finish the figure without re-deriving the panel layout."""
+    if display in ("overlay", "overlay_image"):
+        axis = (np.asarray(axis, dtype=float) if axis is not None
+                else _axis_from_parameters(parameters))
+        return _overlay_figure(section, parameters, axis, model, display)
     if display not in ("image", "wiggle", "both"):
-        raise ValueError("display must be 'image', 'wiggle' or 'both'")
+        raise ValueError("display must be 'image', 'wiggle', 'both', 'overlay' "
+                         "or 'overlay_image'")
     section = np.asarray(section, dtype=float)
     nsamp, nx = section.shape
     axis = np.asarray(axis, dtype=float) if axis is not None else _axis_from_parameters(parameters)
@@ -310,7 +381,8 @@ def _build_section_figure(section, parameters, axis=None, model=None, display="i
 
 def plot_seismic_section(section, parameters, axis=None, model=None, display="image",
                          output_path=None) -> str:
-    """Model (AI, depth) | section as variable-density image, wiggle, or both."""
+    """Model (AI, depth) | section as image, wiggle, or both — or the section
+    drawn ON the outcrop photo ('overlay' = wiggles, 'overlay_image' = color)."""
     fig, _ = _build_section_figure(section, parameters, axis=axis, model=model, display=display)
     if output_path is None:
         fd, output_path = tempfile.mkstemp(suffix=".png")

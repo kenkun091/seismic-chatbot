@@ -151,3 +151,62 @@ def test_axes_orient_downward_and_model_x_extent(domain, display):
         assert xlim == pytest.approx((x[0], x[-1]))
     finally:
         plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# Photo overlay modes ("overlay" = wiggles on the outcrop photo,
+# "overlay_image" = translucent color section on the photo)
+# ---------------------------------------------------------------------------
+
+def _overlay_model(image_path, nx=5, dz=1.0, npad=100, height=20.0, dx=10.0):
+    """A padded outcrop-style model that also carries the photo keys the
+    overlay needs (image_path, width_m), like a real outcrop_to_model result."""
+    m = _padded_model_with_image(nx=nx, dz=dz, npad=npad, height=height, dx=dx)
+    m["image_path"] = image_path
+    m["width_m"] = float((nx - 1) * dx)
+    return m
+
+
+@pytest.mark.parametrize("display", ["overlay", "overlay_image"])
+@pytest.mark.parametrize("domain", ["time", "depth"])
+def test_overlay_modes_write_png_from_both_domains(outcrop_image, display, domain):
+    m = _overlay_model(outcrop_image)
+    axis, sec, par = synthetic_section_from_model(m, domain=domain, display=display)
+    png = plot_seismic_section(sec, par, axis=axis, model=m, display=display)
+    try:
+        assert png.endswith(".png") and os.path.getsize(png) > 0
+    finally:
+        os.remove(png)
+
+
+def test_overlay_axes_registered_to_photo_extent(outcrop_image):
+    m = _overlay_model(outcrop_image)
+    axis, sec, par = synthetic_section_from_model(m, display="overlay")
+    fig, axes_by_kind = _build_section_figure(sec, par, axis=axis, model=m, display="overlay")
+    try:
+        ax = axes_by_kind["overlay"]
+        top, h, w = m["image_top_m"], m["height_m"], m["width_m"]
+        assert ax.get_ylim() == (top + h, top)        # depth increases downward
+        assert ax.get_xlim() == (0.0, w)              # full photo width
+        assert "model" not in axes_by_kind            # photo IS the background panel
+    finally:
+        plt.close(fig)
+
+
+def test_overlay_requires_photo_model():
+    m = _model()                                       # no image_path / extent keys
+    axis, sec, par = synthetic_section_from_model(m, display="image")
+    with pytest.raises(ValueError, match="photo"):
+        plot_seismic_section(sec, par, axis=axis, model=m, display="overlay")
+    with pytest.raises(ValueError, match="photo"):
+        plot_seismic_section(sec, par, axis=axis, model=None, display="overlay_image")
+
+
+def test_overlay_display_flows_through_adapter_and_tool_manager(outcrop_image):
+    m = _overlay_model(outcrop_image)
+    _, _, par = synthetic_section_from_model(m, display="overlay_image")
+    assert par["display"] == "overlay_image"
+    from core.tool_manager import ToolManager
+    _, _, par2 = ToolManager().process_tool_call(
+        "synthetic_section", {"model": m, "display": "overlay"})
+    assert par2["display"] == "overlay"
