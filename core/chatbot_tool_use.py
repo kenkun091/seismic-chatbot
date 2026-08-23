@@ -71,11 +71,30 @@ class SeismicChatBotToolUse:
     )
 
     def _inject_context_inputs(self, tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, Any]:
-        """Fill omitted context-resident parameters from the session context."""
+        """Fill omitted context-resident parameters from the session context.
+
+        For `last_image`, the session's attached photo always wins: the LLM
+        cannot know the staged sandbox filename, so a differing LLM-supplied
+        `image_path` is logged and overridden rather than trusted. The other
+        context-resident params (interpretation, model) keep the weaker
+        "fill only when the LLM left it absent" behaviour.
+        """
         filled = dict(tool_input)
         for name, param, key in self._CONTEXT_INPUTS:
-            if name == tool_name and filled.get(param) is None:
-                value = self.context_manager.get_context(key)
+            if name != tool_name:
+                continue
+            value = self.context_manager.get_context(key)
+            if key == "last_image":
+                if value is not None:
+                    if filled.get(param) is not None and filled[param] != value:
+                        logger.warning(
+                            f"{tool_name}: ignoring LLM-supplied {param}={filled[param]!r}; "
+                            f"using the session's uploaded image {value!r} instead"
+                        )
+                    filled[param] = value
+                elif filled.get(param) is None:
+                    filled.pop(param, None)
+            elif filled.get(param) is None:
                 if value is not None:
                     filled[param] = value
                 else:

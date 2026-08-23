@@ -52,9 +52,17 @@ def test_inject_image_path_for_interpret_and_recipe(bot, outcrop_image):
     assert bot._inject_context_inputs("interpret_outcrop", {}) == {"image_path": outcrop_image}
     assert bot._inject_context_inputs("outcrop_to_seismic", {"height_m": 5}) == {
         "height_m": 5, "image_path": outcrop_image}
-    # explicit value wins; unrelated tools untouched
-    assert bot._inject_context_inputs("interpret_outcrop", {"image_path": "x.png"}) == {"image_path": "x.png"}
+    # the session's attached photo always wins over an LLM-supplied image_path
+    # (the LLM cannot know the staged sandbox filename); unrelated tools untouched
+    assert bot._inject_context_inputs("interpret_outcrop", {"image_path": "x.png"}) == {
+        "image_path": outcrop_image}
     assert bot._inject_context_inputs("make_ricker", {"frequency": 30}) == {"frequency": 30}
+
+
+def test_inject_image_path_without_last_image_leaves_explicit_value(bot):
+    # no attach_image call -> no last_image in context; an explicit LLM value is left as-is.
+    assert bot._inject_context_inputs("interpret_outcrop", {"image_path": "x.png"}) == {
+        "image_path": "x.png"}
 
 
 def test_inject_interpretation_and_model(bot, interp):
