@@ -66,6 +66,28 @@ def test_anthropic_backend_sends_base64_image_and_prompt():
     assert content[1] == {"type": "text", "text": "describe"}
 
 
+def test_anthropic_default_max_tokens_is_8192():
+    fake = _AnthropicFake()
+    client = vc.AnthropicVisionClient("key", client=fake)
+    assert client.max_tokens == 8192
+    client.interpret_image(b"abc", "image/jpeg", "describe")
+    assert fake.kwargs["max_tokens"] == 8192
+
+
+class _AnthropicTruncatedFake:
+    def __init__(self):
+        self.messages = self
+
+    def create(self, **kwargs):
+        return type("Msg", (), {"content": [_Block("partial...")], "stop_reason": "max_tokens"})()
+
+
+def test_anthropic_truncated_output_raises():
+    client = vc.AnthropicVisionClient("key", client=_AnthropicTruncatedFake())
+    with pytest.raises(ValueError, match="truncated"):
+        client.interpret_image(b"abc", "image/jpeg", "describe")
+
+
 class _OpenAIFake:
     def __init__(self):
         self.kwargs = None
@@ -89,6 +111,31 @@ def test_openai_backend_sends_data_url_and_prompt():
     assert content[0] == {"type": "text", "text": "describe"}
     assert content[1]["type"] == "image_url"
     assert content[1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+
+
+def test_openai_default_max_tokens_is_8192():
+    fake = _OpenAIFake()
+    client = vc.OpenAIVisionClient("key", "https://v", client=fake)
+    assert client.max_tokens == 8192
+    client.interpret_image(b"abc", "image/jpeg", "describe")
+    assert fake.kwargs["max_tokens"] == 8192
+
+
+class _OpenAITruncatedFake:
+    def __init__(self):
+        self.chat = self
+        self.completions = self
+
+    def create(self, **kwargs):
+        msg = type("M", (), {"content": "partial..."})()
+        choice = type("C", (), {"message": msg, "finish_reason": "length"})()
+        return type("R", (), {"choices": [choice]})()
+
+
+def test_openai_truncated_output_raises():
+    client = vc.OpenAIVisionClient("key", "https://v", client=_OpenAITruncatedFake())
+    with pytest.raises(ValueError, match="truncated"):
+        client.interpret_image(b"abc", "image/jpeg", "describe")
 
 
 def test_build_client_anthropic(monkeypatch):

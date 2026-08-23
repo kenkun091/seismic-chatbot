@@ -30,7 +30,7 @@ class VisionClient(Protocol):
 
 class AnthropicVisionClient:
     def __init__(self, api_key: str, model: Optional[str] = None,
-                 max_tokens: int = 2048, client=None):
+                 max_tokens: int = 8192, client=None):
         self.model = model or DEFAULT_VISION_MODELS["anthropic"]
         self.max_tokens = max_tokens
         self._client = client if client is not None else self._make_sdk_client(api_key)
@@ -54,13 +54,18 @@ class AnthropicVisionClient:
                 ],
             }],
         )
+        if getattr(msg, "stop_reason", None) == "max_tokens":
+            raise ValueError(
+                "vision model output was truncated at the token limit; "
+                "ask for fewer/simpler regions"
+            )
         return "".join(getattr(b, "text", "") for b in msg.content
                        if getattr(b, "type", "") == "text")
 
 
 class OpenAIVisionClient:
     def __init__(self, api_key: str, base_url: str, model: Optional[str] = None,
-                 max_tokens: int = 2048, client=None):
+                 max_tokens: int = 8192, client=None):
         self.model = model or DEFAULT_VISION_MODELS["openai"]
         self.max_tokens = max_tokens
         self._client = client if client is not None else self._make_sdk_client(api_key, base_url)
@@ -84,7 +89,13 @@ class OpenAIVisionClient:
                 ],
             }],
         )
-        return resp.choices[0].message.content or ""
+        choice = resp.choices[0]
+        if getattr(choice, "finish_reason", None) == "length":
+            raise ValueError(
+                "vision model output was truncated at the token limit; "
+                "ask for fewer/simpler regions"
+            )
+        return choice.message.content or ""
 
 
 def resolve_vision_backend(provider, anthropic_key, vision_key, vision_url) -> Optional[str]:
