@@ -1494,7 +1494,11 @@ def test_overrides_unknown_key_or_field_rejected():
 def test_gas_override_changes_grid_and_direct_route_override_errors():
     brine = outcrop_to_model(_interp([BAND]), height_m=20.0)
     gas = outcrop_to_model(_interp([BAND]), height_m=20.0, overrides={1: {"fluid": "gas"}})
-    assert gas["vp"][gas["facies"] == 1].max() < brine["vp"][brine["facies"] == 1].min()
+    # Robust Gassmann invariants (Vp alone is not one for stiff Han rocks): density and AI drop.
+    assert gas["rho"][gas["facies"] == 1].max() < brine["rho"][brine["facies"] == 1].min()
+    gas_ai = (gas["vp"] * gas["rho"])[gas["facies"] == 1].max()
+    brine_ai = (brine["vp"] * brine["rho"])[brine["facies"] == 1].min()
+    assert gas_ai < brine_ai
     assert gas["regions"][0]["fluid"] == "gas"
     with pytest.raises(ValueError, match="limestone"):
         outcrop_to_model(_interp([LENS]), height_m=20.0, overrides={2: {"fluid": "gas"}})
