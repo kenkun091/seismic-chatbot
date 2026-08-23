@@ -37,6 +37,20 @@ def _check_size(path: str, max_mb: float) -> None:
         raise ValueError(f"image is {size_mb:.1f} MB; the limit is {max_mb:g} MB")
 
 
+def _verify_image(path: str) -> None:
+    """Raise ValueError unless `path` decodes as an actual image.
+
+    An allow-listed extension and a plausible size don't guarantee the bytes
+    are an image (e.g. a renamed text file) — Image.verify() checks the
+    file's internal structure without fully decoding pixel data.
+    """
+    try:
+        with Image.open(path) as im:
+            im.verify()
+    except (OSError, ValueError, Image.DecompressionBombError) as exc:
+        raise ValueError(f"file is not a readable image: {os.path.basename(path)}")
+
+
 def safe_image_path(image_path: str, base_dir: str, max_mb: float = 10.0) -> str:
     """Validate ``image_path`` and return it as an absolute path inside ``base_dir``.
 
@@ -56,6 +70,7 @@ def safe_image_path(image_path: str, base_dir: str, max_mb: float = 10.0) -> str
         raise ValueError(f"image not found: {image_path!r}")
     _check_extension(candidate)
     _check_size(candidate, max_mb)
+    _verify_image(candidate)
     return candidate
 
 
@@ -70,6 +85,7 @@ def stage_upload(src_path: str, base_dir: str, session_id: str,
         raise ValueError(f"uploaded image not found: {src_path!r}")
     ext = _check_extension(src_path)
     _check_size(src_path, max_mb)
+    _verify_image(src_path)
     dest_dir = os.path.join(os.path.abspath(base_dir), str(session_id))
     os.makedirs(dest_dir, exist_ok=True)
     dest = os.path.join(dest_dir, f"{uuid.uuid4().hex}{ext}")

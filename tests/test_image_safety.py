@@ -90,3 +90,17 @@ def test_downscale_keeps_small_image(tmp_path):
 
 def test_image_size(tmp_path):
     assert image_size(_make_png(tmp_path / "a.png", 64, 32)) == (64, 32)
+
+
+def test_safe_image_path_rejects_non_image_bytes(tmp_path):
+    p = tmp_path / "fake.png"
+    p.write_text("this is not an image, just text bytes")
+    with pytest.raises(ValueError, match="not a readable image"):
+        safe_image_path(str(p), str(tmp_path))
+
+
+def test_stage_upload_rejects_non_image_bytes(tmp_path):
+    src = tmp_path / "fake.png"
+    src.write_text("this is not an image, just text bytes")
+    with pytest.raises(ValueError, match="not a readable image"):
+        stage_upload(str(src), str(tmp_path / "u"), "s")
