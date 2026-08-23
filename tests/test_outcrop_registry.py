@@ -49,3 +49,15 @@ def test_tool_manager_surfaces_clear_errors_without_context():
 def test_synthetic_section_defaults():
     d = reg.REGISTRY_BY_NAME["synthetic_section"].defaults
     assert d["dt"] == 1.0 and d["domain"] == "time" and d["method"] == "shuey"
+    assert d["display"] == "image"
+
+
+def test_synthetic_section_display_param_flows_through_tool_manager():
+    import numpy as np
+    nz, nx = 20, 3
+    vp = np.full((nz, nx), 2500.0); vs = vp / 2.0; rho = np.full((nz, nx), 2.3)
+    model = {"vp": vp, "vs": vs, "rho": rho, "dz": 1.0, "dx": 10.0}
+    tm = ToolManager()
+    axis, section, parameters = tm.process_tool_call(
+        "synthetic_section", {"model": model, "display": "wiggle"})
+    assert parameters["display"] == "wiggle"

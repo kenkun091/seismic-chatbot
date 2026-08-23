@@ -43,6 +43,9 @@ def test_model_adapter_matches_direct_call():
     a1, s1, p1 = synthetic_section_from_model(m, wavelet_freq=25.0)
     a2, s2, p2 = create_synthetic_section(m["vp"], m["vs"], m["rho"], m["dz"], m["dx"], wavelet_freq=25.0)
     np.testing.assert_allclose(s1, s2); np.testing.assert_allclose(a1, a2)
+    # the adapter additionally stamps parameters["display"] (default "image") for the
+    # auto-plot chain; everything else must match create_synthetic_section exactly.
+    assert p1.pop("display") == "image"
     assert p1 == p2
 
 

@@ -25,7 +25,8 @@ def outcrop_to_seismic(image_path=None, height_m=None, overrides=None,
                              background_lithology=background_lithology,
                              num_traces=num_traces, wavelet_freq=wavelet_freq)
     axis, section, parameters = synthetic_section_from_model(
-        model, wavelet_freq=wavelet_freq, angle=angle, method=method, domain=domain)
+        model, wavelet_freq=wavelet_freq, angle=angle, method=method, domain=domain,
+        display=display)
     png = plot_seismic_section(section, parameters, axis=axis, model=model, display=display)
     return {
         "interpretation": interp,

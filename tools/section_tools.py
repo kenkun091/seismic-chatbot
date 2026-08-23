@@ -185,10 +185,13 @@ MAX_WIGGLE_TRACES = 80
 def synthetic_section_from_model(model: Optional[Dict[str, Any]] = None, wavelet_freq=30.0,
                                  wv_type="ricker", ormsby_freq=None, phase_rot=0.0,
                                  angle=0.0, method="shuey", dt=1.0, pad_time=50.0,
-                                 domain="time"):
+                                 domain="time", display="image"):
     """Run create_synthetic_section on an EarthModel2D dict (vp, vs, rho, dz, dx).
 
     `model` is filled by the chatbot from the last outcrop_to_model result.
+    `display` ('image'/'wiggle'/'both') is stamped onto the returned
+    `parameters` so the auto-plot chain (which only sees stored results, not
+    the original tool_input) can render the section the way the user asked.
     """
     if model is None:
         raise ValueError("Build an earth model first (outcrop_to_model) — there is no "
@@ -196,10 +199,15 @@ def synthetic_section_from_model(model: Optional[Dict[str, Any]] = None, wavelet
     for key in ("vp", "vs", "rho", "dz", "dx"):
         if key not in model:
             raise ValueError(f"model is missing {key!r}; expected an outcrop_to_model result")
-    return create_synthetic_section(model["vp"], model["vs"], model["rho"], model["dz"], model["dx"],
-                                    wavelet_freq=wavelet_freq, wv_type=wv_type,
-                                    ormsby_freq=ormsby_freq, phase_rot=phase_rot, angle=angle,
-                                    method=method, dt=dt, pad_time=pad_time, domain=domain)
+    if display not in ("image", "wiggle", "both"):
+        raise ValueError("display must be 'image', 'wiggle' or 'both'")
+    axis, section, parameters = create_synthetic_section(
+        model["vp"], model["vs"], model["rho"], model["dz"], model["dx"],
+        wavelet_freq=wavelet_freq, wv_type=wv_type,
+        ormsby_freq=ormsby_freq, phase_rot=phase_rot, angle=angle,
+        method=method, dt=dt, pad_time=pad_time, domain=domain)
+    parameters["display"] = display
+    return axis, section, parameters
 
 
 def _wiggle_step(nx: int) -> int:

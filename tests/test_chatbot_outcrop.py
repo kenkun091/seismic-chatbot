@@ -99,6 +99,27 @@ def test_auto_chain_without_context_returns_none(bot, interp):
     assert bot._handle_automatic_chaining("interpret_outcrop", {}, interp) is None
 
 
+def test_auto_chain_section_passes_display_from_stored_parameters(bot, interp, monkeypatch):
+    """display lives on the stored parameters (set by synthetic_section_from_model),
+    not on the raw tool_input the LLM sent — the chain must read it from there."""
+    model = ot.outcrop_to_model(interp, height_m=20, num_traces=11)
+    result = synthetic_section_from_model(model, display="wiggle")
+    bot._update_context("synthetic_section", {}, result)
+
+    recorded = {}
+
+    def _fake_process_tool_call(tool_name, tool_input):
+        recorded["tool_name"] = tool_name
+        recorded["tool_input"] = tool_input
+        return "x.png"
+
+    monkeypatch.setattr(bot.tool_manager, "process_tool_call", _fake_process_tool_call)
+    chained = bot._handle_automatic_chaining("synthetic_section", {}, result)
+    assert chained == {"image_path": "x.png"}
+    assert recorded["tool_name"] == "plot_seismic_section"
+    assert recorded["tool_input"]["display"] == "wiggle"
+
+
 def test_recipe_result_populates_staged_context(bot, outcrop_image, fake_vision_factory):
     from workflows.recipes.outcrop_to_seismic import outcrop_to_seismic
     res = outcrop_to_seismic(outcrop_image, vision_client=fake_vision_factory([json.dumps(INTERP)]),

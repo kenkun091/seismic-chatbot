@@ -905,7 +905,7 @@ within the constraints above."""
                     "parameters": last["parameters"],
                     "axis": last.get("axis"),
                     "model": self.context_manager.get_context("last_earth_model"),
-                    "display": (last.get("input_params") or {}).get("display", "image"),
+                    "display": last["parameters"].get("display", "image"),
                 }
             else:
                 return None
