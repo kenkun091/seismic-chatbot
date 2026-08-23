@@ -123,10 +123,16 @@ def test_resolve_han_route_matches_predict_layer():
     assert got["fluid"] == "brine" and got["phit"] == 0.20
 
 
-def test_resolve_han_route_with_gas_lowers_vp():
+def test_resolve_han_route_gas_substitution_invariants():
+    """Brine->gas via Gassmann: density drops, Vs rises (mu fluid-independent),
+    acoustic impedance drops. Vp itself is NOT a robust invariant for stiff
+    Han (40 MPa) rocks, where the modulus and density drops nearly cancel."""
     brine = resolve_lithology("sandstone", fluid="brine")
     gas = resolve_lithology("sandstone", fluid="gas")
-    assert gas["vp"] < brine["vp"] and gas["vs"] > brine["vs"]
+    assert gas["rho"] < brine["rho"]
+    assert gas["vs"] > brine["vs"]
+    assert gas["vp"] * gas["rho"] < brine["vp"] * brine["rho"]
+    assert gas["fluid"] == "gas" and brine["fluid"] == "brine"
 
 
 def test_resolve_direct_route_returns_table_values():
