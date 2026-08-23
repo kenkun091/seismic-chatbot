@@ -361,3 +361,186 @@ def plot_outcrop_interpretation(interpretation: Dict[str, Any],
     fig.savefig(output_path, dpi=200, bbox_inches="tight")
     plt.close(fig)
     return output_path
+
+
+# ---------------------------------------------------------------------------
+# Earth model
+# ---------------------------------------------------------------------------
+
+_OVERRIDE_FIELDS = ("lithology", "fluid", "porosity", "vclay")
+DEFAULT_ASPECT = 1.5
+
+
+def apply_overrides(regions: List[Dict[str, Any]],
+                    overrides: Optional[Dict[Any, Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    """Return a copy of `regions` with per-region user corrections applied.
+
+    Keys: region id (int or digit string) or label (case-insensitive).
+    Fields: lithology, fluid, porosity, vclay. Anything else -> ValueError.
+    """
+    out = [dict(r) for r in regions]
+    if not overrides:
+        return out
+    if not isinstance(overrides, dict):
+        raise ValueError("overrides must be an object keyed by region id or label")
+    by_id = {r["id"]: r for r in out}
+    by_label = {r["label"].lower(): r for r in out}
+    for key, fields in overrides.items():
+        target = None
+        skey = str(key).strip()
+        if skey.lstrip("-").isdigit() and int(skey) in by_id:
+            target = by_id[int(skey)]
+        elif skey.lower() in by_label:
+            target = by_label[skey.lower()]
+        if target is None:
+            raise ValueError(f"no region with id or label {key!r}; regions are "
+                             f"{[(r['id'], r['label']) for r in out]}")
+        if not isinstance(fields, dict):
+            raise ValueError(f"override for {key!r} must be an object of fields")
+        for f, v in fields.items():
+            if f not in _OVERRIDE_FIELDS:
+                raise ValueError(f"unknown override field {f!r}; use one of {_OVERRIDE_FIELDS}")
+            if f == "lithology":
+                target["lithology"] = _norm_lithology(v)
+            elif f == "fluid":
+                target["fluid"] = str(v).lower()
+            else:
+                target[f] = _opt_fraction(v, f, target["id"])
+    return out
+
+
+def outcrop_to_model(interpretation: Optional[Dict[str, Any]] = None,
+                     height_m: Optional[float] = None,
+                     overrides: Optional[Dict[Any, Dict[str, Any]]] = None,
+                     background_lithology: Optional[str] = None,
+                     num_traces: int = 101, wavelet_freq: float = 30.0,
+                     pad_m: Optional[float] = None, nz_target: int = 400) -> Dict[str, Any]:
+    """Interpretation + scale + lithology table -> EarthModel2D dict (see plan).
+
+    Deterministic and offline: re-run freely after the user corrects the scale
+    ("the cliff is 40 m") or a region ("make #2 gas-filled").
+    """
+    if interpretation is None:
+        raise ValueError("Interpret an outcrop photo first (interpret_outcrop) — "
+                         "there is no interpretation to build a model from.")
+    # `interpretation` is usually already a validated OutcropInterpretation (the
+    # return value of interpret_outcrop() or validate_interpretation() itself,
+    # e.g. from the tests). validate_interpretation() is not idempotent — its
+    # output regions carry geometry_type/points, not the raw "geometry" field —
+    # so re-validating something already validated would raise spuriously.
+    # Only run raw validation when the input isn't already in validated shape.
+    regs = interpretation.get("regions") if isinstance(interpretation, dict) else None
+    already_validated = (isinstance(regs, list)
+                         and all(isinstance(r, dict) and "geometry_type" in r and "points" in r
+                                 for r in regs))
+    interp = interpretation if already_validated else validate_interpretation(interpretation)
+
+    # --- scale policy: user > vision > ask
+    if height_m is not None:
+        height = float(height_m)
+        scale_source, scale_conf = "user", "high"
+    elif interp["scale"]["estimated_height_m"] is not None:
+        height = float(interp["scale"]["estimated_height_m"])
+        scale_source, scale_conf = "vision", interp["scale"]["confidence"]
+    else:
+        raise ValueError("I need the outcrop height in metres: no scale reference was found "
+                         "in the photo. Tell me e.g. 'the exposure is 30 m high'.")
+    if height <= 0:
+        raise ValueError(f"height_m must be positive (got {height})")
+    num_traces = int(num_traces)
+    if num_traces < 2:
+        raise ValueError("num_traces must be >= 2")
+    if nz_target < 2:
+        raise ValueError("nz_target must be >= 2")
+    if wavelet_freq <= 0:
+        raise ValueError("wavelet_freq must be positive")
+
+    size = interp.get("image_size")
+    if size and len(size) == 2 and size[1] > 0:
+        aspect = float(size[0]) / float(size[1])
+    else:
+        warnings.warn(f"no image size on the interpretation; assuming aspect ratio "
+                      f"{DEFAULT_ASPECT} (width/height)", stacklevel=2)
+        aspect = DEFAULT_ASPECT
+    width = height * aspect
+
+    # --- lithologies
+    background = _norm_lithology(background_lithology or interp["background_lithology"])
+    bg = resolve_lithology(background)
+    regions = apply_overrides(interp["regions"], overrides)
+    props = {0: bg}
+    legend = {0: {"lithology": background, "label": "background"}}
+    provenance = []
+    for r in regions:
+        if r["lithology"] == "cover":
+            provenance.append({"id": r["id"], "label": r["label"], "lithology": "cover",
+                               "route": "background", "phit": None, "vclay": None,
+                               "fluid": None, "vp": None, "vs": None, "rho": None, "n_cells": 0})
+            continue
+        try:
+            p = resolve_lithology(r["lithology"], porosity=r.get("porosity"),
+                                  vclay=r.get("vclay"), fluid=r.get("fluid"))
+        except ValueError as exc:
+            raise ValueError(f"region #{r['id']} ({r['label']}): {exc}")
+        props[r["id"]] = p
+        legend[r["id"]] = {"lithology": r["lithology"], "label": r["label"]}
+        provenance.append({"id": r["id"], "label": r["label"], "lithology": r["lithology"],
+                           "route": p["route"], "phit": p["phit"], "vclay": p["vclay"],
+                           "fluid": p["fluid"], "vp": p["vp"], "vs": p["vs"], "rho": p["rho"],
+                           "n_cells": 0})
+
+    # --- grid
+    dz = max(height / float(nz_target), 0.1)
+    nz_img = max(1, int(round(height / dz)))
+    if pad_m is None:
+        pad_m = 1.5 * bg["vp"] / float(wavelet_freq)
+    pad_m = float(pad_m)
+    if pad_m <= 0:
+        raise ValueError("pad_m must be positive")
+    npad = max(1, int(np.ceil(pad_m / dz)))
+    nz = nz_img + 2 * npad
+    dx = width / float(num_traces - 1)
+    x = np.arange(num_traces) * dx
+    z = (np.arange(nz) + 0.5) * dz
+    image_top = npad * dz
+
+    facies = np.zeros((nz, num_traces), dtype=int)
+    # cell centres of the image part in normalized coordinates
+    xn = x / width if width > 0 else np.zeros_like(x)
+    yn = ((np.arange(nz_img) + 0.5) * dz) / height
+    XN, YN = np.meshgrid(xn, yn)
+    # Nudge edge cells (x=0, x=1) just inside the unit square: Path.contains_points is
+    # undefined exactly on a polygon edge, and full-width bands/polygons touch the edges.
+    eps = 1e-6
+    query = np.column_stack([np.clip(XN.ravel(), eps, 1.0 - eps),
+                             np.clip(YN.ravel(), eps, 1.0 - eps)])
+    img_facies = np.zeros((nz_img, num_traces), dtype=int)
+    for r in regions:
+        if r["lithology"] == "cover":
+            continue
+        mask = MplPath(np.asarray(r["points"], dtype=float)).contains_points(query)
+        mask = mask.reshape(nz_img, num_traces)
+        img_facies[mask] = r["id"]
+    facies[npad:npad + nz_img, :] = img_facies
+    for row in provenance:
+        if row["route"] != "background":
+            row["n_cells"] = int(np.count_nonzero(facies == row["id"]))
+
+    max_id = max(props)
+    lut_vp = np.zeros(max_id + 1); lut_vs = np.zeros(max_id + 1); lut_rho = np.zeros(max_id + 1)
+    for fid, p in props.items():
+        lut_vp[fid], lut_vs[fid], lut_rho[fid] = p["vp"], p["vs"], p["rho"]
+    vp = lut_vp[facies]; vs = lut_vs[facies]; rho = lut_rho[facies]
+
+    return {
+        "facies": facies, "legend": legend,
+        "vp": vp, "vs": vs, "rho": rho,
+        "z": z, "x": x, "dz": float(dz), "dx": float(dx),
+        "nz": int(nz), "nx": int(num_traces),
+        "height_m": height, "width_m": float(width), "pad_m": pad_m,
+        "image_top_m": float(image_top),
+        "scale_source": scale_source, "scale_confidence": scale_conf,
+        "background_lithology": background,
+        "regions": provenance,
+        "image_path": interp.get("image_path"),
+    }
