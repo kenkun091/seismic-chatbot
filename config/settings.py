@@ -39,3 +39,12 @@ MAX_ERRORS = 3
 # Logging Configuration
 LOG_LEVEL = "INFO"
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Vision provider for outcrop-photo interpretation (core/vision_client.py).
+# Optional: when nothing is set, interpret_outcrop raises a clear RuntimeError
+# at call time and every other tool keeps working.
+VISION_PROVIDER = os.environ.get("VISION_PROVIDER")          # "anthropic" | "openai" | None (auto)
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+VISION_API_KEY = os.environ.get("VISION_API_KEY")            # OpenAI-compatible vision endpoint
+VISION_BASE_URL = os.environ.get("VISION_BASE_URL")
+VISION_MODEL = os.environ.get("VISION_MODEL")                # provider default when unset
