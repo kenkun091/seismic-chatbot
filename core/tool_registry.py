@@ -14,6 +14,8 @@ from tools.avo_tools import zoeppritz_reflectivity, shuey_reflectivity, plot_avo
 from tools.rock_physics_tools import calculate_rock_properties, plot_rock_properties, rock_physics_rag, gassmann_substitution, rock_properties_saturation
 from tools.rag_tools import knowledge_rag
 from tools.synthetic_tools import create_synthetic_seismogram, plot_synthetic_seismogram
+from tools.outcrop_tools import interpret_outcrop, plot_outcrop_interpretation, outcrop_to_model
+from tools.section_tools import synthetic_section_from_model, plot_seismic_section
 from workflows.adapters import predict_elastic_layer
 from workflows.engine import WORKFLOW_REGISTRY
 from tools.parameter_validation import validate_make_ricker, validate_wedge_model, validate_avo, validate_synthetic_seismogram
@@ -598,6 +600,112 @@ REGISTRY = [
         defaults={"fluid": "water", "reduce": "mean"},
         validator=None,
         auto_plot=None,
+    ),
+    ToolSpec(
+        name="interpret_outcrop",
+        fn=interpret_outcrop,
+        description=(
+            "Interprets the user's uploaded outcrop PHOTO with a vision model: outlines "
+            "rock bodies/beds as regions with a lithology each (sandstone, shale, limestone, "
+            "coal, ...), estimates the exposure height in metres from any scale reference "
+            "(hammer, person, scale bar) with a confidence, and returns the interpretation "
+            "plus an overlay plot. Call this first when a message says '[image attached'. "
+            "Follow with outcrop_to_model, then synthetic_section."
+        ),
+        params={
+            "image_path": {"type": "string",
+                           "description": "Leave empty — supplied automatically from the uploaded photo."},
+        },
+        required=[],
+        defaults={"image_path": None},
+        auto_plot="plot_outcrop_interpretation",
+    ),
+    ToolSpec(
+        name="plot_outcrop_interpretation",
+        fn=plot_outcrop_interpretation,
+        description="Draws the interpreted facies polygons over the outcrop photo with a legend and the scale estimate.",
+        params={
+            "interpretation": {"type": "object",
+                               "description": "Interpretation dict returned by interpret_outcrop."},
+        },
+        required=["interpretation"],
+        defaults={},
+    ),
+    ToolSpec(
+        name="outcrop_to_model",
+        fn=outcrop_to_model,
+        description=(
+            "Turns the latest outcrop interpretation into a 2-D elastic earth model (Vp/Vs/density "
+            "grids on a shale background): resolves the scale (your height_m overrides the photo's "
+            "estimate; if neither exists it asks), maps each region's lithology to properties "
+            "(Han 1986/Gassmann for clastics, literature values for carbonates/coal/salt), and pads "
+            "the model above and below. Re-run it to apply corrections such as a new height or "
+            "overrides like {\"2\": {\"fluid\": \"gas\"}} or {\"sand lens\": {\"lithology\": \"siltstone\"}}."
+        ),
+        params={
+            "interpretation": {"type": "object",
+                               "description": "Leave empty — supplied automatically from the last interpret_outcrop result."},
+            "height_m": {"type": "number",
+                         "description": "Total height of the photographed exposure in metres. Overrides the vision estimate; required if the photo had no scale reference."},
+            "overrides": {"type": "object",
+                          "description": "Per-region corrections keyed by region id or label; fields: lithology, fluid (water/brine/oil/gas), porosity, vclay. Fluid/porosity/vclay apply to clastic lithologies only."},
+            "background_lithology": {"type": "string",
+                                     "description": "Lithology filling everything not outlined (default: the interpretation's, normally 'shale')."},
+            "num_traces": {"type": "integer",
+                           "description": "Number of traces (columns) across the outcrop width (default 101)."},
+            "wavelet_freq": {"type": "number",
+                             "description": "Intended wavelet frequency in Hz, used to size the background padding (default 30)."},
+            "pad_m": {"type": "number",
+                      "description": "Background padding above and below the outcrop in metres (default 1.5 wavelengths)."},
+        },
+        required=[],
+        defaults={"interpretation": None, "height_m": None, "overrides": None,
+                  "background_lithology": None, "num_traces": 101,
+                  "wavelet_freq": 30.0, "pad_m": None},
+    ),
+    ToolSpec(
+        name="synthetic_section",
+        fn=synthetic_section_from_model,
+        description=(
+            "Convolves the latest 2-D earth model (from outcrop_to_model) into a synthetic seismic "
+            "section: per-trace depth-to-time, reflectivity at every property change (acoustic at "
+            "normal incidence, Shuey/Zoeppritz at an angle), Ricker or Ormsby wavelet. Returns the "
+            "section in time (default) or depth-converted, and plots it as a variable-density image, "
+            "wiggle traces, or both."
+        ),
+        params={
+            "model": {"type": "object",
+                      "description": "Leave empty — supplied automatically from the last outcrop_to_model result."},
+            "wavelet_freq": {"type": "number", "description": "Ricker dominant frequency in Hz (default 30)."},
+            "wv_type": {"type": "string", "description": "'ricker' (default) or 'ormsby'."},
+            "ormsby_freq": {"type": "string", "description": "Four increasing Ormsby corners 'f1,f2,f3,f4'; required when wv_type='ormsby'."},
+            "phase_rot": {"type": "number", "description": "Wavelet phase rotation in degrees (default 0)."},
+            "angle": {"type": "number", "description": "Incidence angle in degrees, 0 <= angle < 90 (default 0)."},
+            "method": {"type": "string", "description": "'shuey' (default) or 'zoeppritz' when angle > 0."},
+            "dt": {"type": "number", "description": "Time sampling in ms (default 1)."},
+            "pad_time": {"type": "number", "description": "Quiet time in ms above the model top and below its base (default 50)."},
+            "domain": {"type": "string", "description": "'time' (default, TWT) or 'depth' (depth-converted so it registers with the photo)."},
+        },
+        required=[],
+        defaults={"model": None, "wavelet_freq": 30.0, "wv_type": "ricker", "ormsby_freq": None,
+                  "phase_rot": 0.0, "angle": 0.0, "method": "shuey", "dt": 1.0,
+                  "pad_time": 50.0, "domain": "time"},
+        auto_plot="plot_seismic_section",
+    ),
+    ToolSpec(
+        name="plot_seismic_section",
+        fn=plot_seismic_section,
+        description="Plots a synthetic seismic section (earth-model impedance panel plus image and/or wiggle display).",
+        params={
+            "section": {"type": "array", "items": {"type": "array", "items": {"type": "number"}},
+                        "description": "Section samples (nt x ntraces)."},
+            "parameters": {"type": "object", "description": "Parameters dict returned by synthetic_section."},
+            "axis": {"type": "array", "items": {"type": "number"}, "description": "Vertical axis returned by synthetic_section."},
+            "model": {"type": "object", "description": "Earth model dict for the impedance panel (optional)."},
+            "display": {"type": "string", "description": "'image' (default), 'wiggle', or 'both'."},
+        },
+        required=["section", "parameters"],
+        defaults={"axis": None, "model": None, "display": "image"},
     ),
 ]
 
