@@ -187,6 +187,29 @@ EXAMPLE_PROMPTS = {
         }
     ],
 
+    "Outcrop to Seismic": [
+        {
+            "title": "Interpret an outcrop photo",
+            "prompt": "Interpret this outcrop photo: outline the beds and bodies, tell me the lithologies and how tall the exposure looks",
+            "description": "Upload a photo first — interpret_outcrop returns facies regions, a scale estimate with confidence, and an overlay plot"
+        },
+        {
+            "title": "Correct the scale and a facies",
+            "prompt": "The cliff is 35 m high and region 2 is a gas-filled sandstone — rebuild the earth model",
+            "description": "outcrop_to_model re-runs offline with height_m and per-region overrides (no new vision call)"
+        },
+        {
+            "title": "Seismic section from the model",
+            "prompt": "Generate the synthetic seismic section with a 40 Hz Ricker wavelet as wiggle traces in depth",
+            "description": "synthetic_section convolves the 2-D model; image or wiggle display, time or depth domain"
+        },
+        {
+            "title": "One-shot photo to seismic",
+            "prompt": "Turn this outcrop photo straight into a seismic image with a 30 Hz wavelet; the exposure is about 50 m high",
+            "description": "outcrop_to_seismic workflow: interpretation, 2-D shale-background model and section in one call"
+        },
+    ],
+
     "Agentic Flows": [
         {
             "title": "Wavelet → wedge → tuning",
