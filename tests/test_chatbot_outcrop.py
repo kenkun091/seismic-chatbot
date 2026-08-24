@@ -197,3 +197,16 @@ def test_system_prompt_lists_outcrop_tools(bot):
     for name in ("interpret_outcrop", "outcrop_to_model", "synthetic_section", "outcrop_to_seismic"):
         assert f"- {name}:" in prompt
     assert "[image attached" in prompt
+
+
+def test_auto_chain_display_fallback_is_overlay(bot, interp):
+    """Stored parameters without a display key (hand-built context) chain to overlay."""
+    model = ot.outcrop_to_model(interp, height_m=20, num_traces=11)
+    bot._update_context("outcrop_to_model", {}, model)
+    axis, section, parameters = synthetic_section_from_model(model)
+    parameters = dict(parameters); parameters.pop("display")
+    bot._update_context("synthetic_section", {}, (axis, section, parameters))
+    seen = {}
+    bot.tool_manager.process_tool_call = lambda name, inp: seen.update(inp) or "x.png"
+    bot._handle_automatic_chaining("synthetic_section", {}, (axis, section, parameters))
+    assert seen["display"] == "overlay"

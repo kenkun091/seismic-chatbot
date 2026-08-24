@@ -49,7 +49,7 @@ def test_tool_manager_surfaces_clear_errors_without_context():
 def test_synthetic_section_defaults():
     d = reg.REGISTRY_BY_NAME["synthetic_section"].defaults
     assert d["dt"] == 1.0 and d["domain"] == "time" and d["method"] == "shuey"
-    assert d["display"] == "image"
+    assert d["display"] == "overlay"   # pipeline default: wiggles drawn on the photo
 
 
 def test_synthetic_section_display_param_flows_through_tool_manager():
@@ -61,3 +61,8 @@ def test_synthetic_section_display_param_flows_through_tool_manager():
     axis, section, parameters = tm.process_tool_call(
         "synthetic_section", {"model": model, "display": "wiggle"})
     assert parameters["display"] == "wiggle"
+
+
+def test_synthetic_section_default_display_is_overlay():
+    assert reg.REGISTRY_BY_NAME["synthetic_section"].defaults["display"] == "overlay"
+    assert reg.REGISTRY_BY_NAME["outcrop_to_seismic"].defaults["display"] == "overlay"

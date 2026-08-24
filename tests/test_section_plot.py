@@ -44,9 +44,9 @@ def test_model_adapter_matches_direct_call():
     a1, s1, p1 = synthetic_section_from_model(m, wavelet_freq=25.0)
     a2, s2, p2 = create_synthetic_section(m["vp"], m["vs"], m["rho"], m["dz"], m["dx"], wavelet_freq=25.0)
     np.testing.assert_allclose(s1, s2); np.testing.assert_allclose(a1, a2)
-    # the adapter additionally stamps parameters["display"] (default "image") for the
+    # the adapter additionally stamps parameters["display"] (default "overlay") for the
     # auto-plot chain; everything else must match create_synthetic_section exactly.
-    assert p1.pop("display") == "image"
+    assert p1.pop("display") == "overlay"
     assert p1 == p2
 
 
@@ -210,3 +210,18 @@ def test_overlay_display_flows_through_adapter_and_tool_manager(outcrop_image):
     _, _, par2 = ToolManager().process_tool_call(
         "synthetic_section", {"model": m, "display": "overlay"})
     assert par2["display"] == "overlay"
+
+
+def test_pipeline_default_display_is_overlay_but_plot_function_default_is_image(outcrop_image):
+    """The outcrop pipeline defaults to drawing on the photo; the generic plot
+    function keeps 'image' so photo-less grids still plot without arguments."""
+    m = _overlay_model(outcrop_image)
+    _, _, par = synthetic_section_from_model(m)
+    assert par["display"] == "overlay"
+    plain = _model()
+    axis, sec, par2 = synthetic_section_from_model(plain, domain="depth")
+    png = plot_seismic_section(sec, par2)            # no display given -> image mode
+    try:
+        assert os.path.getsize(png) > 0
+    finally:
+        os.remove(png)

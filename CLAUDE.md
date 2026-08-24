@@ -185,7 +185,7 @@ tools hand results through `ContextManager` so only the first touches a network:
    NaNs → 0 with a warning), superposition onto the `dt` grid (default **1 ms**;
    `parameters["max_abs_amplitude"]` is always measured on the time-domain section), Ricker
    or Ormsby. `domain="depth"` returns a column-wise depth-converted section. Oracle-tested
-   per column against `create_synthetic_seismogram`. `display` (`"image"`/`"wiggle"`/`"both"`/`"overlay"` — wiggle traces drawn on the outcrop photo, depth-registered — /`"overlay_image"` — translucent color section on the photo)
+   per column against `create_synthetic_seismogram`. `display` (**default `"overlay"`** — wiggle traces drawn on the outcrop photo, depth-registered; or `"overlay_image"` — translucent color section on the photo; `"image"`/`"wiggle"`/`"both"` — panels without the photo)
    is a `synthetic_section_from_model` parameter, not just a plot arg — it's stamped onto
    `parameters["display"]` so the auto-plotted `plot_seismic_section` (wiggle decimated to
    ≤ 80 traces) renders it even though the LLM never passes `display` on the staged

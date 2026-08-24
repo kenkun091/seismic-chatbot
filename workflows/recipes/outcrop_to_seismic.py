@@ -16,7 +16,7 @@ from tools.section_tools import synthetic_section_from_model, plot_seismic_secti
 
 def outcrop_to_seismic(image_path=None, height_m=None, overrides=None,
                        background_lithology=None, wavelet_freq=30.0, angle=0.0,
-                       method="shuey", domain="time", display="image",
+                       method="shuey", domain="time", display="overlay",
                        num_traces=101, vision_client=None):
     """Returns a dict (arrays included; see tests). Only interpret_outcrop calls the VLM."""
     interp = interpret_outcrop(image_path, vision_client=vision_client)

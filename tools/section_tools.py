@@ -185,11 +185,12 @@ MAX_WIGGLE_TRACES = 80
 def synthetic_section_from_model(model: Optional[Dict[str, Any]] = None, wavelet_freq=30.0,
                                  wv_type="ricker", ormsby_freq=None, phase_rot=0.0,
                                  angle=0.0, method="shuey", dt=1.0, pad_time=50.0,
-                                 domain="time", display="image"):
+                                 domain="time", display="overlay"):
     """Run create_synthetic_section on an EarthModel2D dict (vp, vs, rho, dz, dx).
 
     `model` is filled by the chatbot from the last outcrop_to_model result.
-    `display` ('image'/'wiggle'/'both') is stamped onto the returned
+    `display` ('overlay' by default — wiggles drawn on the outcrop photo —
+    or 'overlay_image'/'image'/'wiggle'/'both') is stamped onto the returned
     `parameters` so the auto-plot chain (which only sees stored results, not
     the original tool_input) can render the section the way the user asked.
     """

@@ -98,3 +98,12 @@ def test_run_sweep_over_frequency(outcrop_image, fake_vision_factory, monkeypatc
     assert res["stats"]["kind"] == "numeric"
     assert len(res["rows"]) == 2
     assert len(fake.calls) == 2
+
+
+def test_recipe_default_display_is_overlay(outcrop_image, fake_vision_factory):
+    res = outcrop_to_seismic(outcrop_image, vision_client=fake_vision_factory([json.dumps(INTERP)]),
+                             num_traces=11)
+    try:
+        assert res["section"]["parameters"]["display"] == "overlay"
+    finally:
+        _cleanup(res)
