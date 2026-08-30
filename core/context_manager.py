@@ -1,5 +1,7 @@
 from typing import Dict, Any, Optional
 
+from core.turn_trace import TraceRecorder
+
 class ContextManager:
     def __init__(self):
         """Initialize the context manager."""
@@ -12,6 +14,9 @@ class ContextManager:
             "completion_tokens": 0,
             "total_tokens": 0
         }
+        # Per-session decision-trace recorder (core/turn_trace.py). The owning
+        # bot stamps its session_id onto it right after construction.
+        self.trace = TraceRecorder()
 
     def update_context(self, key: str, value: Any) -> None:
         """
