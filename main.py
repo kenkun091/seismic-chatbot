@@ -4,8 +4,17 @@ import argparse
 from config.settings import LOG_LEVEL, LOG_FORMAT
 from interfaces.gradio_interface import create_chat_interface
 
-# Create the demo interface at module level for hot reloading
-demo = create_chat_interface()
+
+def build_interface(mode: str):
+    """Build the Gradio demo for the given --mode."""
+    if mode == "legacy":
+        from interfaces.gradio_interface_legacy import create_chat_interface as create_legacy
+        return create_legacy()
+    if mode == "agentic":
+        from core.orchestrator import SeismicOrchestrator
+        return create_chat_interface(base_bot=SeismicOrchestrator())
+    return create_chat_interface()
+
 
 def main():
     """Main entry point for the seismic chatbot application."""
@@ -19,10 +28,10 @@ def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Seismic Modeling Assistant")
     parser.add_argument(
-        "--mode", 
-        choices=["tool-use", "legacy"], 
+        "--mode",
+        choices=["tool-use", "agentic", "legacy"],
         default="tool-use",
-        help="Choose implementation mode: tool-use (new) or legacy (old)"
+        help="Choose implementation mode: tool-use (new), agentic (orchestrator + subagents), or legacy (old)"
     )
     parser.add_argument(
         "--test", 
@@ -46,14 +55,8 @@ def main():
         else:
             # Launch the chat interface
             logger.info(f"Starting Seismic Modeling Assistant in {args.mode} mode...")
-            if args.mode == "legacy":
-                # Use legacy interface
-                from interfaces.gradio_interface_legacy import create_chat_interface as create_legacy_interface
-                demo = create_legacy_interface()
-            else:
-                # Use tool use interface (default)
-                demo = create_chat_interface()
-            
+            demo = build_interface(args.mode)
+
             # Do NOT expose a public tunnel by default — that would put an
             # unauthenticated, key-billing endpoint on the internet. Opt in
             # explicitly with GRADIO_SHARE=1; otherwise bind to localhost.

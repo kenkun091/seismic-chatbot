@@ -248,6 +248,10 @@ LLM-facing tool **names still differ from function names** (declared in the spec
 
 Tools: `tools/{ricker,wedge,avo,rock_physics}_tools.py` plus `rag_tools.py`, `parameter_validation.py`, `parameter_linking.py`. The seismic math originates in the repo-root `wedge.py` (one dir up, outside this package); `tools/wedge_tools.py` is the maintained reimplementation — fix math here, not in root `wedge.py`.
 
+## Agentic mode (orchestrator + subagents)
+
+An alternative request-flow, run with `python main.py --mode agentic`, swaps the classic loop above for `core/orchestrator.py::SeismicOrchestrator` — an LLM loop that never sees real tool schemas, only two meta-tools (`discover_tools`, `run_task`): `discover_tools` does semantic search over the registry via `core/tool_index.py` (a `ToolIndex` backed by its own regenerable, self-cleaning ChromaDB collection, `tool_index`, separate from the RAG `seismic_knowledge` collection), and `run_task` delegates one self-contained task to a scoped `core/executor_agent.py::ExecutorAgent`, which runs the real tool-calling loop against just the tools it was handed and returns a `TaskResult`. The orchestrator and the classic `SeismicChatBotToolUse` now share their bounded tool-calling loop (`core/tool_loop.py`) and intent-split/RAG dispatch (`core/knowledge_router.py`), extracted so both modes stay in sync. `SeismicOrchestrator` matches `SeismicChatBotToolUse`'s public surface (`new_session`/`process_single_input`/`attach_image`/`session_id`), so `interfaces/gradio_interface.py::create_chat_interface(base_bot=...)` can host either. The classic tool-use loop (`--mode tool-use`) remains the default. Design/rationale: `docs/superpowers/specs/2026-08-29-orchestrator-subagent-workflow-design.md`.
+
 ## Tests
 
 Real pytest suite under `tests/` (the loose `test_*.py` at the package root are standalone scripts, not the suite).

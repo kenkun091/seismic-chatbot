@@ -49,12 +49,17 @@ def prepare_turn(message: str, image_path: Optional[str], session_bot,
     return f"[image attached: {os.path.basename(staged)}] {message}"
 
 
-def create_chat_interface():
-    """Create and return the Gradio chat interface using the tool use pattern."""
+def create_chat_interface(base_bot=None):
+    """Create and return the Gradio chat interface using the tool use pattern.
+
+    base_bot: any object with new_session()/process_single_input()/attach_image()
+    (SeismicChatBotToolUse or SeismicOrchestrator). Default: the classic bot.
+    """
     # Build the heavy, conversation-stateless components ONCE. Each browser
     # session gets its own isolated chatbot (fresh context + token counter) via
     # new_session(), held in gr.State so users never share conversation state.
-    base_bot = SeismicChatBotToolUse()
+    if base_bot is None:
+        base_bot = SeismicChatBotToolUse()
 
     def respond(message, image_path, chat_history, session_bot):
         """Process a user message (+ optional photo) using a per-session chatbot."""
