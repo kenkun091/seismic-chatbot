@@ -60,3 +60,18 @@ def test_legacy_new_session_shares_heavy_components():
     assert a.tool_manager is base.tool_manager
     assert a.knowledge_base is base.knowledge_base
     assert a.input_parser is base.input_parser
+
+
+def test_orchestrator_new_session_isolates_context(fake_llm_factory):
+    from core.orchestrator import SeismicOrchestrator
+    from core.tool_manager import ToolManager
+    base = SeismicOrchestrator(llm_client=fake_llm_factory([]), tool_manager=ToolManager(),
+                               knowledge_base=object(), tool_index=object())
+    a, b = base.new_session(), base.new_session()
+    a.context_manager.set_context("last_wedge_model", {"x": 1})
+    assert b.context_manager.get_context("last_wedge_model") is None
+    assert a.session_id != b.session_id
+    # shared heavy components are reused
+    assert a.llm_client is base.llm_client
+    assert a.tool_manager is base.tool_manager
+    assert a.tool_index is base.tool_index
