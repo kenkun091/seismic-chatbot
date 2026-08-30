@@ -76,6 +76,7 @@ class SeismicChatBotToolUse:
         return KnowledgeRouter(
             getattr(self, "llm_client", None),
             getattr(self, "knowledge_base", None),
+            getattr(self, "context_manager", None),
         )
 
     # Tools whose heavy inputs live in per-session context rather than in the

@@ -81,7 +81,7 @@ class SeismicOrchestrator:
         self.tool_index = tool_index or ToolIndex()
         self.context_manager = ContextManager()  # per-session, never shared
         self.session_id = uuid.uuid4().hex
-        self._knowledge_router = KnowledgeRouter(self.llm_client, self.knowledge_base)
+        self._knowledge_router = KnowledgeRouter(self.llm_client, self.knowledge_base, self.context_manager)
 
     def new_session(self) -> "SeismicOrchestrator":
         return SeismicOrchestrator(llm_client=self.llm_client,
