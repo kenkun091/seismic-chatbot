@@ -109,3 +109,33 @@ def test_root_clamps_to_earliest_child_start():
     chat = spans[1]
     assert spans[0]["start_ns"] <= chat["start_ns"]
     assert spans[0]["end_ns"] >= chat["end_ns"]
+
+
+def test_content_bearing_event_fields_are_gated():
+    events = [
+        {"t": "turn_start", "ts": 1.0, "input": "secret question"},
+        {"t": "discover", "ts": 1.1, "query": "secret task", "hits": [["a", 0.5]]},
+        {"t": "run_task", "ts": 1.2, "brief": "secret brief", "tool_names": ["a"],
+         "tools_used": ["a"], "n_images": 0},
+    ]
+    record = _record(events)
+    root = spans_from_record(record)[0]
+    discover = [e for e in root["events"] if e["name"] == "discover"][0]
+    run_task = [e for e in root["events"] if e["name"] == "run_task"][0]
+    assert "query" not in discover["attributes"]
+    assert "brief" not in run_task["attributes"]
+    assert discover["attributes"]["hits"]  # non-content fields survive
+    root_cap = spans_from_record(record, capture_content=True)[0]
+    assert [e for e in root_cap["events"] if e["name"] == "discover"][0][
+        "attributes"]["query"] == "secret task"
+    assert [e for e in root_cap["events"] if e["name"] == "run_task"][0][
+        "attributes"]["brief"] == "secret brief"
+
+
+def test_malformed_ts_falls_back_to_turn_start():
+    spans = spans_from_record(_record([
+        {"t": "turn_start", "ts": 100.0, "input": "x"},
+        {"t": "llm", "ts": None, "model": "m", "latency_ms": 500.0},
+    ]))
+    chat = [s for s in spans if s["name"] == "chat m"][0]
+    assert chat["end_ns"] == 100_000_000_000  # fell back to turn start

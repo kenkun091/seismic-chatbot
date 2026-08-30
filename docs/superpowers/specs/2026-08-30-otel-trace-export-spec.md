@@ -53,8 +53,10 @@ root span first:
   the event's fields coerced to OTel-legal values (scalars kept; scalar lists kept;
   anything else `json.dumps`'d; `None` dropped).
 - **Content stays out by default** (semconv posture): the `turn_start.input` snippet is
-  attached (as `gen_ai.input.messages`) only when `capture_content=True`; nothing else in
-  the record contains content (names-not-values held since Tier 1).
+  attached (as `gen_ai.input.messages`) only when `capture_content=True`; agentic-mode
+  `run_task.brief` and `discover.query` are likewise gated behind `capture_content`; error
+  strings are exported (standard OTel error data); everything else is names-not-values
+  (held since Tier 1).
 
 ## Emission (`core/otel_export.py::install/uninstall`) — guarded, env-gated, no globals
 

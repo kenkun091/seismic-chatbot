@@ -281,8 +281,10 @@ events) and ships them over OTLP. Enable by installing the extra
 (`pip install -e ".[otel]"`) and setting `OTEL_EXPORTER_OTLP_ENDPOINT` (+
 `OTEL_EXPORTER_OTLP_HEADERS` for auth; `OTEL_SERVICE_NAME` defaults to seismic-chatbot) —
 e.g. a self-hosted Langfuse's `/api/public/otel` endpoint with a Basic-auth header, or
-Phoenix/Jaeger. Unset ⇒ complete no-op with no OTel import. Prompt content stays out of
-spans unless `OTEL_GENAI_CAPTURE_CONTENT=1`. `install()` builds a module-local
+Phoenix/Jaeger. Unset ⇒ complete no-op with no OTel import. Prompt content — the
+turn-input snippet and agentic-mode briefs/queries — stays out of spans unless
+`OTEL_GENAI_CAPTURE_CONTENT=1` (error strings are exported as standard OTel error data).
+`install()` builds a module-local
 TracerProvider (never mutates the global). Tests: `tests/test_otel_translation.py` (pure,
 no SDK), `test_otel_install.py` (importorskip-gated, InMemorySpanExporter).
 

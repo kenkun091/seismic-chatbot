@@ -21,6 +21,11 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_AGENT_NAME = "seismic-chatbot"
 
+# Event fields that carry request-derived text (agentic-mode task briefs and
+# discovery queries). Exported only when capture_content is enabled; error
+# strings are deliberately NOT gated (standard OTel error data).
+_CONTENT_EVENT_KEYS = ("brief", "query")
+
 
 def _ns(ts: float) -> int:
     return int(round(float(ts) * 1e9))
@@ -75,7 +80,9 @@ def spans_from_record(record: Dict[str, Any], capture_content: bool = False,
 
     for e in events:
         t = e.get("t")
-        ts = e.get("ts", start_ts)
+        ts = e.get("ts")
+        if not isinstance(ts, (int, float)):
+            ts = start_ts
         if t == "turn_start":
             if capture_content and e.get("input"):
                 root_attrs["gen_ai.input.messages"] = str(e["input"])
@@ -108,7 +115,11 @@ def spans_from_record(record: Dict[str, Any], capture_content: bool = False,
                           "start_ns": _ns(ts - dur_s), "end_ns": _ns(ts),
                           "attributes": attrs, "events": [], "status_error": error})
         else:
-            attrs = _clean_attrs({k: v for k, v in e.items() if k not in ("t", "ts")})
+            fields = {k: v for k, v in e.items() if k not in ("t", "ts")}
+            if not capture_content:
+                for key in _CONTENT_EVENT_KEYS:
+                    fields.pop(key, None)
+            attrs = _clean_attrs(fields)
             root["events"].append({"name": t or "event", "ts_ns": _ns(ts),
                                    "attributes": attrs})
             if t == "turn_error":
@@ -164,6 +175,9 @@ def install(span_exporter: Any = None) -> bool:
         processor = BatchSpanProcessor(OTLPSpanExporter())
     else:
         processor = SimpleSpanProcessor(span_exporter)
+    # SDK default shutdown_on_exit=True registers an atexit hook that calls
+    # provider.shutdown(), draining the batch queue on normal interpreter
+    # exit — do not "fix" the apparent missing flush, and do not disable it.
     provider = TracerProvider(resource=Resource.create(
         {"service.name": os.environ.get("OTEL_SERVICE_NAME", _DEFAULT_AGENT_NAME)}))
     provider.add_span_processor(processor)
