@@ -139,3 +139,47 @@ def test_attach_image_and_image_message_route_to_tools(fake_llm_factory):
     out = orch.process_single_input("[image attached: photo.png] interpret this")
     assert out["reply"] == "photo noted"
     assert orch.context_manager.get_context("last_image") == "/sandbox/s1/photo.png"
+
+
+def test_non_dict_meta_args_reported_not_raised(fake_llm_factory):
+    # A JSON-valid-but-non-object arguments string (e.g. "[]") must not raise
+    # AttributeError out of _dispatch_meta -- it should become a recoverable
+    # tool message so the turn survives.
+    non_dict_call = {"content": "", "stop_reason": "tool_calls", "usage": None,
+                     "tool_calls": [FakeToolCall("run_task", "[]")]}
+    orch, llm = make_orchestrator(fake_llm_factory, [
+        non_dict_call,
+        final("<reply>Recovered.</reply>"),
+    ])
+    out = orch.process_single_input("do something odd")
+    assert out["reply"] == "Recovered."
+    tool_msgs = [m for m in llm.calls[0]["messages"] if m.get("role") == "tool"]
+    assert "Invalid arguments" in tool_msgs[0]["content"]
+
+
+def test_run_task_rejects_empty_tool_names_before_spawning_executor(fake_llm_factory):
+    orch, llm = make_orchestrator(fake_llm_factory, [
+        meta("run_task", {"brief": "x", "tool_names": []}),
+        final("<reply>Cannot do that.</reply>"),
+    ])
+    out = orch.process_single_input("do something odd")
+    # Only the two orchestrator-loop responses should have been consumed;
+    # no executor LLM call should have popped a scripted response.
+    assert llm.calls == llm.calls  # sanity: calls recorded
+    assert len(llm.calls) == 2
+    tool_msgs = [m for m in llm.calls[0]["messages"] if m.get("role") == "tool"]
+    assert "tool_names is empty" in tool_msgs[0]["content"]
+    assert out["reply"] == "Cannot do that."
+
+
+def test_run_task_rejects_non_list_tool_names(fake_llm_factory):
+    orch, llm = make_orchestrator(fake_llm_factory, [
+        meta("run_task", {"brief": "x", "tool_names": "make_ricker"}),
+        final("<reply>Cannot do that.</reply>"),
+    ])
+    out = orch.process_single_input("do something odd")
+    tool_msgs = [m for m in llm.calls[0]["messages"] if m.get("role") == "tool"]
+    assert "m, a, k, e" not in tool_msgs[0]["content"]
+    assert "tool_names is empty" in tool_msgs[0]["content"] or \
+        "tool_names must be a non-empty list" in tool_msgs[0]["content"]
+    assert out["reply"] == "Cannot do that."

@@ -152,6 +152,8 @@ class SeismicOrchestrator:
                 else dict(tool_call.function.arguments)
         except (json.JSONDecodeError, TypeError) as e:
             return f"Invalid arguments: {e}"
+        if not isinstance(args, dict):
+            return "Invalid arguments: expected a JSON object."
         if name == "discover_tools":
             return self._discover(args.get("task_description", ""))
         if name == "run_task":
@@ -166,6 +168,8 @@ class SeismicOrchestrator:
         return "Matching tools:\n" + "\n".join(f"- {c.card}" for c in cards)
 
     def _run_task(self, brief: str, tool_names: List[str], images: List[str]) -> str:
+        if not isinstance(tool_names, list) or not tool_names:
+            return "tool_names is empty — call discover_tools first."
         unknown = [n for n in tool_names if n not in REGISTRY_BY_NAME]
         if unknown:
             return (f"Unknown tool name(s): {', '.join(unknown)}. "

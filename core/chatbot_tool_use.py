@@ -1,7 +1,6 @@
 import logging
-import json
 import uuid
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from .llm_client import LLMClient
 from .tool_manager import ToolManager
 from .context_manager import ContextManager
