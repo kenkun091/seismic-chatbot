@@ -220,7 +220,11 @@ Respond in JSON format:
         """
         try:
             # Use the knowledge base's RAG system
-            rag_response = self.knowledge_base.query_knowledge(user_input)
+            try:
+                rag_response = self.knowledge_base.query_knowledge(
+                    user_input, context_manager=self.context_manager)
+            except TypeError:
+                rag_response = self.knowledge_base.query_knowledge(user_input)
 
             docs = rag_response.get('retrieved_documents') or []
             emit_event(self.context_manager, "rag",

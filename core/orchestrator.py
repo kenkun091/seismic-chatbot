@@ -78,7 +78,7 @@ class SeismicOrchestrator:
                  knowledge_base=None, tool_index=None):
         self.llm_client = llm_client or LLMClient()
         self.tool_manager = tool_manager or ToolManager()
-        self.knowledge_base = knowledge_base or KnowledgeBase()
+        self.knowledge_base = knowledge_base or KnowledgeBase(llm_client=self.llm_client)
         self.tool_index = tool_index or ToolIndex()
         self.context_manager = ContextManager()  # per-session, never shared
         self.session_id = uuid.uuid4().hex

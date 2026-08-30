@@ -30,7 +30,7 @@ class SeismicChatBotToolUse:
         """
         self.llm_client = llm_client or LLMClient()
         self.tool_manager = tool_manager or ToolManager()
-        self.knowledge_base = knowledge_base or KnowledgeBase()
+        self.knowledge_base = knowledge_base or KnowledgeBase(llm_client=self.llm_client)
         self.context_manager = ContextManager()  # per-session, never shared
         self.session_id = uuid.uuid4().hex  # names this session's upload sandbox subdir
         self.context_manager.trace.session_id = self.session_id

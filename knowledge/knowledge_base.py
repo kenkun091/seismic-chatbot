@@ -6,17 +6,21 @@ from .topics.rock_physics import ROCK_PHYSICS_KNOWLEDGE
 from .rag_system import RAGSystem
 
 class KnowledgeBase:
-    def __init__(self):
-        """Initialize the knowledge base with topic modules and RAG system."""
+    def __init__(self, llm_client=None):
+        """Initialize the knowledge base with topic modules and RAG system.
+
+        llm_client: shared, token/trace-accounted LLM client; RAGSystem builds
+        its own when None.
+        """
         self.topics = {
             'ricker': RICKER_KNOWLEDGE,
             'wedge': WEDGE_KNOWLEDGE,
             'seismic_properties': SEISMIC_PROPERTIES_KNOWLEDGE,
             'rock_physics': ROCK_PHYSICS_KNOWLEDGE
         }
-        
+
         # Initialize RAG system
-        self.rag_system = RAGSystem()
+        self.rag_system = RAGSystem(llm_client=llm_client)
         
         # Populate the vector database with knowledge topics
         self._populate_vector_db()
@@ -54,18 +58,12 @@ class KnowledgeBase:
         # Get specific subtopic response
         return topic_knowledge.get(subtopic, topic_knowledge.get('overview', self._get_default_response()))
     
-    def query_knowledge(self, query: str, domain: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Query the knowledge base using RAG (Retrieval-Augmented Generation).
-        
-        Args:
-            query: The user's question
-            domain: Optional domain to restrict search
-            
-        Returns:
-            Dict containing generated response and metadata
-        """
-        return self.rag_system.retrieve_and_generate(query, domain)
+    def query_knowledge(self, query: str, domain: Optional[str] = None,
+                        context_manager: Any = None) -> Dict[str, Any]:
+        """RAG query. context_manager (optional) receives token/trace
+        accounting for the generation LLM call."""
+        return self.rag_system.retrieve_and_generate(
+            query, domain, context_manager=context_manager)
     
     def get_knowledge_base_info(self) -> Dict[str, Any]:
         """

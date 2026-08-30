@@ -27,8 +27,9 @@ class RAGSystem:
         
         logger.info("RAG system initialized")
     
-    def retrieve_and_generate(self, query: str, domain: Optional[str] = None, 
-                            top_k: int = None, similarity_threshold: float = None) -> Dict[str, Any]:
+    def retrieve_and_generate(self, query: str, domain: Optional[str] = None,
+                            top_k: int = None, similarity_threshold: float = None,
+                            context_manager: Any = None) -> Dict[str, Any]:
         """
         Main RAG function: retrieve relevant documents and generate a response.
         
@@ -55,7 +56,7 @@ class RAGSystem:
                 return self._handle_no_results(query, domain)
             
             # Step 2: Generate response using retrieved context
-            response = self._generate_response(query, retrieved_docs)
+            response = self._generate_response(query, retrieved_docs, context_manager=context_manager)
             
             # Step 3: Format and return results
             return {
@@ -98,27 +99,34 @@ class RAGSystem:
         logger.info(f"Retrieved {len(results)} documents")
         return results
     
-    def _generate_response(self, query: str, retrieved_docs: List[Dict[str, Any]]) -> str:
+    def _generate_response(self, query: str, retrieved_docs: List[Dict[str, Any]],
+                           context_manager: Any = None) -> str:
         """
         Generate a response using the LLM and retrieved context.
-        
+
         Args:
             query: User's question
             retrieved_docs: Retrieved documents
-            
+            context_manager: Optional context manager for token/trace accounting
+
         Returns:
             Generated response
         """
         # Prepare context from retrieved documents
         context = self._prepare_context(retrieved_docs)
-        
+
         # Create the prompt for the LLM
         system_prompt = self._create_system_prompt()
         user_prompt = self._create_user_prompt(query, context)
-        
+
         try:
             # Generate response using the LLM
-            response = self.llm_client.get_simple_completion(system_prompt, user_prompt)
+            try:
+                response = self.llm_client.get_simple_completion(
+                    system_prompt, user_prompt, context_manager=context_manager)
+            except TypeError:
+                response = self.llm_client.get_simple_completion(
+                    system_prompt, user_prompt)
             return response.strip()
             
         except Exception as e:
