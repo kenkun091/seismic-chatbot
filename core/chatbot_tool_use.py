@@ -33,6 +33,7 @@ class SeismicChatBotToolUse:
         self.knowledge_base = knowledge_base or KnowledgeBase()
         self.context_manager = ContextManager()  # per-session, never shared
         self.session_id = uuid.uuid4().hex  # names this session's upload sandbox subdir
+        self.context_manager.trace.session_id = self.session_id
 
         # Get tool schemas for the LLM
         self.tools = self.tool_manager.get_tool_schemas()
@@ -270,8 +271,10 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
             user_input: The user's input text
 
         Returns:
-            dict: {"reply": str, "images": list[str]} — images may be empty.
+            dict: {"reply": str, "images": list[str], "trace": dict} — images may be empty.
         """
+        trace = self.context_manager.trace
+        trace.begin_turn(user_input)
         try:
             # Check if this is a knowledge question that should use RAG
             if self._is_knowledge_question(user_input):
@@ -298,11 +301,13 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
                 # the plots; give it a minimal caption instead.
                 reply = "Here are the results."
 
-            return {"reply": reply, "images": images}
+            return {"reply": reply, "images": images, "trace": trace.end_turn()}
 
         except Exception as e:
             logger.error(f"Error processing input: {e}", exc_info=True)
-            return {"reply": f"I encountered an error: {str(e)}", "images": []}
+            trace.emit("turn_error", error=str(e))
+            return {"reply": f"I encountered an error: {str(e)}", "images": [],
+                    "trace": trace.end_turn()}
     
     def _is_knowledge_question(self, user_input: str) -> bool:
         return self._knowledge_router.is_knowledge_question(user_input)
@@ -340,7 +345,8 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
     def _handle_tool_request(self, user_input: str) -> Dict[str, Any]:
         result = self._tool_loop.run(
             self.system_prompt, [{"role": "user", "content": user_input}], self.tools)
-        return {"reply": result["reply"], "images": result["images"]}
+        return {"reply": result["reply"], "images": result["images"],
+                "tools_used": result["tools_used"]}
 
     def get_available_tools(self) -> List[Dict]:
         """
