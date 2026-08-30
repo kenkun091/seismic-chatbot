@@ -300,7 +300,7 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
             return {"reply": reply, "images": images}
 
         except Exception as e:
-            logger.error(f"Error processing input: {e}")
+            logger.error(f"Error processing input: {e}", exc_info=True)
             return {"reply": f"I encountered an error: {str(e)}", "images": []}
     
     def _is_knowledge_question(self, user_input: str) -> bool:

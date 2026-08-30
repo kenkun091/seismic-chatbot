@@ -45,7 +45,7 @@ LLM_MAX_TOKENS = 500
 MAX_ERRORS = 3
 
 # Logging Configuration
-LOG_LEVEL = "INFO"
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 # Vision provider for outcrop-photo interpretation (core/vision_client.py).

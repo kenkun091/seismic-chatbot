@@ -7,6 +7,13 @@ from config.example_prompts import EXAMPLE_PROMPTS, search_prompts, get_random_p
 from config.settings import SEISMIC_UPLOAD_DIR, MAX_IMAGE_MB
 from tools.image_safety import stage_upload
 
+import logging
+from config.settings import LOG_LEVEL, LOG_FORMAT
+
+# No-op when main.py already configured the root logger; makes direct imports
+# / uvicorn-style launches emit logs instead of silence.
+logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO), format=LOG_FORMAT)
+
 
 def append_bot_response(chat_history, response):
     """Append a bot response to Gradio 3.x pair-format chat history.

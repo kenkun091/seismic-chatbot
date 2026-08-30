@@ -48,7 +48,7 @@ class ExecutorAgent:
             out = self._loop.run(system_prompt,
                                  [{"role": "user", "content": brief}], schemas)
         except Exception as e:  # a failure here must not kill the orchestrator turn
-            logger.error(f"Executor failed on brief {brief!r}: {e}")
+            logger.error(f"Executor failed on brief {brief!r}: {e}", exc_info=True)
             return TaskResult(summary="", error=str(e))
         return TaskResult(summary=out["reply"], images=out["images"],
                           tools_used=out["tools_used"])

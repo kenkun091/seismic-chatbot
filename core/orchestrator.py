@@ -114,7 +114,7 @@ class SeismicOrchestrator:
                 reply = "Here are the results."
             return {"reply": reply, "images": images}
         except Exception as e:
-            logger.error(f"Error processing input: {e}")
+            logger.error(f"Error processing input: {e}", exc_info=True)
             return {"reply": f"I encountered an error: {str(e)}", "images": []}
 
     def _run_meta_loop(self, user_input: str) -> Dict[str, Any]:

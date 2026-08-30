@@ -51,11 +51,11 @@ class ToolManager:
         is_valid, msg = self.validate_parameters(tool_name, full_params)
         if not is_valid:
             raise ValueError(msg)
-        logger.debug(f"Calling {tool_name} with {full_params}")
+        logger.info(f"Calling {tool_name} with {full_params}")
         return spec.fn(**full_params)
 
     def process_tool_call(self, tool_name: str, tool_input: Dict[str, Any]) -> Any:
-        logger.info(f"Processing tool call: {tool_name} with input: {tool_input}")
+        logger.debug(f"process_tool_call: {tool_name} raw input keys: {sorted(tool_input)}")
         if tool_name not in self.specs:
             raise ValueError(f"Unknown tool: {tool_name}")
         return self.execute_tool(tool_name, tool_input)

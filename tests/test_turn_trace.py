@@ -66,3 +66,16 @@ def test_usage_dict_tolerates_shapes():
 def test_settings_expose_trace_dir():
     from config.settings import SEISMIC_TRACE_DIR
     assert isinstance(SEISMIC_TRACE_DIR, str) and SEISMIC_TRACE_DIR
+
+
+def test_log_level_env_override(monkeypatch):
+    import importlib
+    import config.settings as settings
+    try:
+        monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+        importlib.reload(settings)
+        assert settings.LOG_LEVEL == "DEBUG"
+    finally:
+        monkeypatch.undo()
+        importlib.reload(settings)
+    assert settings.LOG_LEVEL == "INFO"

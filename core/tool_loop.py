@@ -267,7 +267,7 @@ class ToolLoopRunner:
                 return {"image_path": plot_result}
             return None
         except Exception as e:
-            logger.error(f"Error in automatic chaining: {e}")
+            logger.error(f"Error in automatic chaining: {e}", exc_info=True)
             return None
 
     def update_context(self, tool_name: str, tool_input: Dict[str, Any], tool_result: Any):
@@ -472,7 +472,7 @@ class ToolLoopRunner:
 
                 # Loop so the model can narrate the result or chain another tool.
             except Exception as e:
-                logger.error(f"Tool execution failed: {e}")
+                logger.error(f"Tool execution failed: {e}", exc_info=True)
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
