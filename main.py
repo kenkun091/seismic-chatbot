@@ -24,7 +24,13 @@ def main():
         format=LOG_FORMAT
     )
     logger = logging.getLogger(__name__)
-    
+
+    # Optional OTel export of decision traces (no-op unless the OTLP endpoint
+    # env vars are set; see core/otel_export.py).
+    from core.otel_export import install as install_otel
+    if install_otel():
+        logger.info("OTel trace export enabled")
+
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Seismic Modeling Assistant")
     parser.add_argument(
