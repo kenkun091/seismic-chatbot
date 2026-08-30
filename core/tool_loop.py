@@ -8,9 +8,11 @@ here change BOTH bots; keep it that way.
 import logging
 import re
 import json
+import time
 import numpy as np
 from typing import Dict, Any, List, Optional
 from core.tool_registry import AUTO_PLOT
+from core.turn_trace import emit_event, usage_dict
 from workflows.engine import WORKFLOW_NAMES
 
 logger = logging.getLogger(__name__)
@@ -408,6 +410,13 @@ class ToolLoopRunner:
         except Exception as e:
             logger.error(f"Error updating context: {e}")
 
+    def _emit_llm(self, response: Dict[str, Any]) -> None:
+        emit_event(self.context_manager, "llm",
+                   model=response.get("model"),
+                   latency_ms=response.get("latency_ms"),
+                   tool_call=bool(response.get("tool_calls")),
+                   **usage_dict(response.get("usage")))
+
     def run(self, system_prompt: str, messages: List[dict], tools: list) -> Dict[str, Any]:
         """The bounded loop from _handle_tool_request, generalized.
 
@@ -431,6 +440,7 @@ class ToolLoopRunner:
             )
             if response.get("usage"):
                 self.context_manager.update_token_usage(response["usage"])
+            self._emit_llm(response)
 
             if not response.get("tool_calls"):
                 # No tool requested: this is the final answer.
@@ -443,6 +453,12 @@ class ToolLoopRunner:
             # Execute the (first) requested tool. Append only the tool_call we
             # respond to so every assistant tool_call has a matching tool result.
             tool_call = response["tool_calls"][0]
+            if len(response["tool_calls"]) > 1:
+                dropped = [tc.function.name for tc in response["tool_calls"][1:]]
+                logger.warning(
+                    f"Executing only the first of {len(response['tool_calls'])} "
+                    f"requested tool calls; dropped: {dropped}")
+                emit_event(self.context_manager, "parallel_calls_dropped", dropped=dropped)
             tool_name = tool_call.function.name
             tool_input_str = tool_call.function.arguments
             messages.append({
@@ -452,9 +468,24 @@ class ToolLoopRunner:
             })
 
             try:
-                tool_input = self.inject_context_inputs(
-                    tool_name, self.parse_tool_input(tool_input_str))
+                raw_input = self.parse_tool_input(tool_input_str)
+                tool_input = self.inject_context_inputs(tool_name, raw_input)
+                injected = sorted(k for k in tool_input if k not in raw_input)
+                overridden = sorted(
+                    k for k in raw_input
+                    if k in tool_input
+                    and isinstance(raw_input.get(k), str)
+                    and isinstance(tool_input.get(k), str)
+                    and raw_input[k] != tool_input[k])
+                spec = getattr(self.tool_manager, "specs", {}).get(tool_name)
+                defaults_filled = sorted(
+                    k for k in spec.defaults if k not in tool_input) if spec else []
+                started = time.perf_counter()
                 tool_result = self.tool_manager.process_tool_call(tool_name, tool_input)
+                emit_event(self.context_manager, "tool_call", tool=tool_name, ok=True,
+                           ms=round((time.perf_counter() - started) * 1000, 1),
+                           injected=injected, overridden=overridden,
+                           defaults_filled=defaults_filled)
                 tools_used.append(tool_name)
                 messages.append({
                     "role": "tool",
@@ -469,10 +500,20 @@ class ToolLoopRunner:
                 chained_result = self.handle_automatic_chaining(tool_name, tool_input, tool_result)
                 if chained_result:
                     self.harvest_images(chained_result, collected_images)
+                    emit_event(self.context_manager, "auto_plot", compute=tool_name,
+                               plot=AUTO_PLOT.get(tool_name), fired=True)
+                elif AUTO_PLOT.get(tool_name):
+                    logger.warning(
+                        f"auto-plot {AUTO_PLOT[tool_name]} did not run after "
+                        f"{tool_name} (missing context or plot error)")
+                    emit_event(self.context_manager, "auto_plot", compute=tool_name,
+                               plot=AUTO_PLOT[tool_name], fired=False)
 
                 # Loop so the model can narrate the result or chain another tool.
             except Exception as e:
                 logger.error(f"Tool execution failed: {e}", exc_info=True)
+                emit_event(self.context_manager, "tool_call", tool=tool_name,
+                           ok=False, error=str(e))
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
@@ -484,6 +525,11 @@ class ToolLoopRunner:
                 })
                 continue
 
+        logger.warning(
+            f"Tool-round budget ({self.max_tool_rounds}) exhausted; forcing "
+            f"tool-free completion")
+        emit_event(self.context_manager, "budget_exhausted", rounds=self.max_tool_rounds)
+
         # Round budget exhausted while still calling tools: force a tool-free
         # completion so the user gets a textual answer instead of nothing.
         final_response = self.llm_client.get_completion(
@@ -494,6 +540,7 @@ class ToolLoopRunner:
         )
         if final_response.get("usage"):
             self.context_manager.update_token_usage(final_response["usage"])
+        self._emit_llm(final_response)
         reply = extract_reply(final_response["content"]) or final_response["content"]
         if isinstance(reply, bool):
             reply = str(reply)
