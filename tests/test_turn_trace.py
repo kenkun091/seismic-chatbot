@@ -75,10 +75,12 @@ def test_log_level_env_override(monkeypatch):
         monkeypatch.setenv("LOG_LEVEL", "DEBUG")
         importlib.reload(settings)
         assert settings.LOG_LEVEL == "DEBUG"
+        monkeypatch.delenv("LOG_LEVEL")
+        importlib.reload(settings)
+        assert settings.LOG_LEVEL == "INFO"
     finally:
         monkeypatch.undo()
         importlib.reload(settings)
-    assert settings.LOG_LEVEL == "INFO"
 
 
 def test_context_manager_owns_a_recorder():
@@ -151,3 +153,15 @@ def test_get_simple_completion_accounts_tokens_and_traces():
 def test_get_simple_completion_without_context_manager_unchanged():
     client = _bare_llm_client(content="plain")
     assert client.get_simple_completion("s", "u") == "plain"
+
+
+def test_trace_dir_off_disables_persistence(monkeypatch):
+    import importlib
+    import config.settings as settings
+    try:
+        monkeypatch.setenv("SEISMIC_TRACE_DIR", "off")
+        importlib.reload(settings)
+        assert settings.SEISMIC_TRACE_DIR == ""
+    finally:
+        monkeypatch.undo()
+        importlib.reload(settings)

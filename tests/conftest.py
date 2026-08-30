@@ -1,6 +1,12 @@
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _isolated_trace_dir(tmp_path, monkeypatch):
+    """Keep test runs hermetic: traces go to tmp_path, not the global tmpdir."""
+    monkeypatch.setattr("config.settings.SEISMIC_TRACE_DIR", str(tmp_path / "traces"))
+
+
 class FakeFunc:
     def __init__(self, name, arguments):
         self.name = name

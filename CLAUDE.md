@@ -264,7 +264,7 @@ per-session `ContextManager` (`.trace`). Events record decisions, never content:
 additive `"trace"` key (`{"reply", "images", "trace"}`); the API exposes it as
 `ChatResponse.trace` and the Gradio status line shows the tool chain. Records are appended
 per session to `SEISMIC_TRACE_DIR/<session_id>.jsonl` (default `<tmpdir>/seismic_traces`;
-write failures are swallowed). `LOG_LEVEL` is env-overridable now; interfaces call
+`SEISMIC_TRACE_DIR=off` disables persistence; write failures are swallowed). `LOG_LEVEL` is env-overridable now; interfaces call
 `basicConfig` themselves. `LLMClient.get_simple_completion(..., context_manager=)` accounts
 router-side tokens — but `knowledge/rag_system.py` still builds its own `LLMClient`, so RAG
 *generation* tokens remain untracked (known gap, Tier 2). Tests: `tests/test_turn_trace.py`,

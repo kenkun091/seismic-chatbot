@@ -79,7 +79,7 @@ class TraceRecorder:
         if not self.persist_dir:
             return
         try:
-            os.makedirs(self.persist_dir, exist_ok=True)
+            os.makedirs(self.persist_dir, mode=0o700, exist_ok=True)
             path = os.path.join(self.persist_dir, f"{self.session_id}.jsonl")
             with open(path, "a") as f:
                 f.write(json.dumps(record, default=str) + "\n")
