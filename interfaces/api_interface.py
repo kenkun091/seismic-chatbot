@@ -51,6 +51,7 @@ class ChatResponse(BaseModel):
     images: List[str] = []
     success: bool
     error: Optional[str] = None
+    trace: Optional[dict] = None
 
 class ExamplePrompt(BaseModel):
     title: str
@@ -76,6 +77,7 @@ async def chat(request: ChatRequest):
                 response=str(result["reply"]),
                 images=[str(p) for p in result.get("images") or []],
                 success=True,
+                trace=result.get("trace"),
             )
         return ChatResponse(response=str(result), success=True)
     except Exception as e:
