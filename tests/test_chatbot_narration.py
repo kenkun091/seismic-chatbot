@@ -57,8 +57,8 @@ def test_workflow_result_is_narrated_with_image(bot, fake_llm_factory):
         "tuning": {"tuning_thickness": 12.5, "image_path": "/tmp/t.png"},
     })
     out = bot._handle_tool_request("tuning analysis for a 25% porosity sand")
-    assert out == {"reply": "Tuning thickness is 12.5 m at 30 Hz.",
-                   "images": ["/tmp/t.png"]}
+    assert out["reply"] == "Tuning thickness is 12.5 m at 30 Hz."
+    assert out["images"] == ["/tmp/t.png"]
 
 
 def test_multiple_rounds_collect_all_images_in_order(bot, fake_llm_factory):
@@ -122,8 +122,8 @@ def test_round_exhaustion_returns_reply_and_images(bot, fake_llm_factory):
         "tuning": {"tuning_thickness": 12.5, "image_path": "/tmp/t.png"},
     })
     out = bot._handle_tool_request("keep going")
-    assert out == {"reply": "Stopping here; tuning is 12.5 m.",
-                   "images": ["/tmp/t.png"]}
+    assert out["reply"] == "Stopping here; tuning is 12.5 m."
+    assert out["images"] == ["/tmp/t.png"]
 
 
 def test_tool_error_recovers_and_narrates(bot, fake_llm_factory):
@@ -140,8 +140,8 @@ def test_tool_error_recovers_and_narrates(bot, fake_llm_factory):
         "fluid_scenario": ValueError("bad fluids"),
     })
     out = bot._handle_tool_request("tuning then fluids")
-    assert out == {"reply": "Fluid scenario failed; tuning is 12.5 m.",
-                   "images": ["/tmp/t.png"]}
+    assert out["reply"] == "Fluid scenario failed; tuning is 12.5 m."
+    assert out["images"] == ["/tmp/t.png"]
     # The model saw the error as a tool message it can react to.
     final_messages = llm.calls[-1]["messages"]
     assert any(m.get("role") == "tool" and "Tool execution failed" in m["content"]
@@ -156,22 +156,26 @@ def test_persistent_tool_errors_exhaust_rounds_and_still_answer(bot, fake_llm_fa
     )
     bot.tool_manager = _ScriptedToolManager({"fluid_scenario": ValueError("bad fluids")})
     out = bot._handle_tool_request("fluids")
-    assert out == {"reply": "I could not run the fluid scenario.", "images": []}
+    assert out["reply"] == "I could not run the fluid scenario."
+    assert out["images"] == []
 
 
 def test_process_single_input_passes_through_tool_dict(bot, monkeypatch):
     monkeypatch.setattr(bot, "_is_knowledge_question", lambda text: False)
     monkeypatch.setattr(bot, "_handle_tool_request",
-                        lambda text: {"reply": "hi", "images": ["/tmp/a.png"]})
-    assert bot.process_single_input("x") == {"reply": "hi", "images": ["/tmp/a.png"]}
+                        lambda text: {"reply": "hi", "images": ["/tmp/a.png"], "tools_used": []})
+    out = bot.process_single_input("x")
+    assert out["reply"] == "hi"
+    assert out["images"] == ["/tmp/a.png"]
 
 
 def test_process_single_input_wraps_knowledge_string(bot, monkeypatch):
     monkeypatch.setattr(bot, "_is_knowledge_question", lambda text: True)
     monkeypatch.setattr(bot, "_handle_knowledge_question",
                         lambda text: "A Ricker wavelet is a zero-phase pulse.")
-    assert bot.process_single_input("what is a ricker?") == {
-        "reply": "A Ricker wavelet is a zero-phase pulse.", "images": []}
+    out = bot.process_single_input("what is a ricker?")
+    assert out["reply"] == "A Ricker wavelet is a zero-phase pulse."
+    assert out["images"] == []
 
 
 def test_process_single_input_error_returns_dict(bot, monkeypatch):
@@ -190,13 +194,14 @@ def test_process_single_input_none_reply_gets_fallback_text(bot, monkeypatch):
     monkeypatch.setattr(bot, "_is_knowledge_question", lambda text: True)
     monkeypatch.setattr(bot, "_handle_knowledge_question", lambda text: None)
     out = bot.process_single_input("x")
-    assert out == {"reply": "I didn't get a response. Please try again.",
-                   "images": []}
+    assert out["reply"] == "I didn't get a response. Please try again."
+    assert out["images"] == []
 
 
 def test_process_single_input_empty_reply_with_images_gets_caption(bot, monkeypatch):
     monkeypatch.setattr(bot, "_is_knowledge_question", lambda text: False)
     monkeypatch.setattr(bot, "_handle_tool_request",
-                        lambda text: {"reply": "", "images": ["/tmp/a.png"]})
-    assert bot.process_single_input("x") == {"reply": "Here are the results.",
-                                             "images": ["/tmp/a.png"]}
+                        lambda text: {"reply": "", "images": ["/tmp/a.png"], "tools_used": []})
+    out = bot.process_single_input("x")
+    assert out["reply"] == "Here are the results."
+    assert out["images"] == ["/tmp/a.png"]
