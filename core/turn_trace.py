@@ -43,6 +43,28 @@ def emit_event(context_manager: Any, t: str, **fields: Any) -> None:
         recorder.emit(t, **fields)
 
 
+# Registered callbacks receive each finished turn record (e.g. the OTel span
+# exporter in core/otel_export.py). Callbacks may never break a turn: each is
+# wrapped in its own try/except in end_turn.
+_TRACE_EXPORTERS: List[Any] = []
+
+
+def register_trace_exporter(fn: Any) -> None:
+    if fn not in _TRACE_EXPORTERS:
+        _TRACE_EXPORTERS.append(fn)
+
+
+def unregister_trace_exporter(fn: Any) -> None:
+    try:
+        _TRACE_EXPORTERS.remove(fn)
+    except ValueError:
+        pass
+
+
+def clear_trace_exporters() -> None:
+    del _TRACE_EXPORTERS[:]
+
+
 class TraceRecorder:
     def __init__(self, session_id: Optional[str] = None,
                  persist_dir: Optional[str] = None) -> None:
@@ -73,6 +95,11 @@ class TraceRecorder:
             "events": self.events,
         }
         self._persist(record)
+        for exporter in list(_TRACE_EXPORTERS):
+            try:
+                exporter(record)
+            except Exception as e:
+                logger.warning(f"trace exporter failed: {e}")
         return record
 
     def _persist(self, record: Dict[str, Any]) -> None:
