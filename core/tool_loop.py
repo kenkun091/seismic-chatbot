@@ -250,7 +250,9 @@ class ToolLoopRunner:
                    injected=injected, overridden=overridden,
                    defaults_filled=defaults_filled)
         calls = self.context_manager.get_context("current_turn_calls")
-        if isinstance(calls, list):
+        if isinstance(calls, list) and not getattr(spec, "session_scoped", False):
+            # run_skill/save_skill/list_skills are orchestration, not reproducible
+            # steps: a re-captured skill must not try to run them.
             calls.append({"tool": tool_name, "args": dict(public_input), "ok": True})
         self.update_context(tool_name, tool_input, tool_result)
         before_direct = len(collected_images)

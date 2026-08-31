@@ -24,6 +24,10 @@ logger = logging.getLogger(__name__)
 MAX_ORCH_ROUNDS = 8
 META_TOOL_NAMES = ("discover_tools", "run_task")
 
+# Session bookkeeping the LLM must never see as "context it can rely on".
+_INTERNAL_CONTEXT_KEYS = frozenset({"current_turn_calls", "current_turn_input",
+                                    "last_turn_calls", "last_turn_input"})
+
 META_TOOLS = [
     {"type": "function", "function": {
         "name": "discover_tools",
@@ -105,7 +109,8 @@ class SeismicOrchestrator:
         self.context_manager.set_context("last_image", path)
 
     def _system_prompt(self) -> str:
-        keys = sorted(self.context_manager.conversation_context.keys())
+        keys = sorted(k for k in self.context_manager.conversation_context
+                      if not k.startswith("_") and k not in _INTERNAL_CONTEXT_KEYS)
         line = f"Session context currently holds: {', '.join(keys)}." if keys \
             else "Session context is empty (fresh conversation)."
         return ORCHESTRATOR_SYSTEM_PROMPT.format(context_line=line)

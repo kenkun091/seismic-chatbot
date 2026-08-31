@@ -327,7 +327,11 @@ procedure through a scoped `ExecutorAgent`; `save_skill(name, description, param
 overwrite)` captures the PREVIOUS turn's calls (`ContextManager.begin_turn_recording`
 rotates `current_turn_calls`/`last_turn_calls` — argument VALUES kept in memory only, never
 persisted) and parameterizes by explicit value matching (a parameter matching no argument is
-an error; context-fed and non-scalar args are dropped); `list_skills()`. Discovery: skills
+an error; context-fed and non-scalar args are dropped); `list_skills()`. Saving a name that
+already exists in either layer (repo or runtime) requires `overwrite=true`. Session-scoped
+tools are never recorded and are rejected inside skills. The FastAPI `/chat` route builds a
+fresh session per request, so `save_skill` cannot see a previous turn there (Gradio and the
+classic/agentic chat loops can). Discovery: skills
 render as `skill:<name>` cards via `ToolIndex.refresh(registry.specs())` so agentic-mode
 `discover_tools` returns them; the orchestrator prompt explains invoking them via `run_skill`.
 Gradio has a "Skills" accordion with a save-last-turn form (uses the most recent completed

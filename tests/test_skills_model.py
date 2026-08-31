@@ -111,7 +111,9 @@ def test_registry_two_layers_override_and_save(tmp_path, caplog):
     assert reg.names() == ["ricker_wavelet"]
     assert reg.get("ricker_wavelet").source == "repo"
     override = dict(_GOOD, description="runtime version")
-    path = reg.save(override)
+    with pytest.raises(ValueError):
+        reg.save(override)  # shadows a repo skill: overwrite required
+    path = reg.save(override, overwrite=True)
     assert path == str(runtime / "ricker_wavelet.yaml")
     assert reg.get("ricker_wavelet").description == "runtime version"
     assert reg.get("ricker_wavelet").source == "runtime"

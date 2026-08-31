@@ -57,9 +57,13 @@ def _slots_in(value: Any) -> List[str]:
     return []
 
 
-def _registry_names() -> set:
+def _registry_specs() -> dict:
     from core.tool_registry import REGISTRY_BY_NAME  # lazy: avoids import cycle
-    return set(REGISTRY_BY_NAME)
+    return REGISTRY_BY_NAME
+
+
+def _registry_names() -> set:
+    return set(_registry_specs())
 
 
 def validate_skill(data: Any, source: str = "memory",
@@ -82,6 +86,10 @@ def validate_skill(data: Any, source: str = "memory",
     for t in tools:
         if t not in known:
             raise ValueError(f"skill {name}: unknown tool '{t}'")
+    specs = _registry_specs()
+    for t in tools:
+        if getattr(specs[t], "session_scoped", False):
+            raise ValueError(f"skill {name}: tool '{t}' is session-scoped and cannot be part of a skill")
     chain = list(data.get("chain") or [])
     for i, step in enumerate(chain):
         if not isinstance(step, dict) or "tool" not in step:
@@ -301,8 +309,8 @@ class SkillRegistry:
             raise ValueError(f"skill name '{skill.name}' collides with a registry tool")
         os.makedirs(self.runtime_dir, mode=0o700, exist_ok=True)
         path = os.path.join(self.runtime_dir, f"{skill.name}.yaml")
-        if os.path.exists(path) and not overwrite:
-            raise ValueError(f"skill '{skill.name}' already exists at {path}; pass overwrite=true to replace")
+        if (skill.name in self._skills or os.path.exists(path)) and not overwrite:
+            raise ValueError(f"skill '{skill.name}' already exists ({self._skills[skill.name].source if skill.name in self._skills else 'file'}); pass overwrite=true to replace")
         with open(path, "w") as f:
             yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
         self.reload()
@@ -368,8 +376,10 @@ def execute_skill(skill: Skill, params: Optional[Dict[str, Any]], mode: str,
                     "result": runner.compact_value(last), "extra_image_paths": images}
         from core.executor_agent import ExecutorAgent
         brief = fill_procedure(skill.procedure, bound)
-        result = ExecutorAgent(session.llm_client, session.tool_manager, cm).run(
-            brief, list(skill.tools))
+        executor = ExecutorAgent(session.llm_client, session.tool_manager, cm)
+        executor._loop.current_skill = skill.name
+        executor._loop.tool_index = getattr(session, "tool_index", None)
+        result = executor.run(brief, list(skill.tools))
         emit_event(cm, "skill_run", name=skill.name, mode="guided",
                    n_steps=len(result.tools_used))
         out: Dict[str, Any] = {"mode": "guided", "summary": result.summary,
