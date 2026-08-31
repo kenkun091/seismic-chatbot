@@ -31,6 +31,14 @@ else:
         tempfile.gettempdir(), "seismic_traces"
     )
 
+# Reusable skills (core/skills.py): curated skills ship in <package>/skills/;
+# captured skills are written to SEISMIC_SKILLS_DIR (0o700), runtime overriding
+# repo on a name clash (WARNING).
+SKILLS_REPO_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "skills")
+SEISMIC_SKILLS_DIR = os.environ.get("SEISMIC_SKILLS_DIR") or os.path.join(
+    tempfile.gettempdir(), "seismic_skills")
+
 # RAG Configuration
 RAG_CHUNK_SIZE = 1000
 RAG_CHUNK_OVERLAP = 200
