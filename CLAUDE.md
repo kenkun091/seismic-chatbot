@@ -252,7 +252,7 @@ Tools: `tools/{ricker,wedge,avo,rock_physics}_tools.py` plus `rag_tools.py`, `pa
 
 An alternative request-flow, run with `python main.py --mode agentic`, swaps the classic loop above for `core/orchestrator.py::SeismicOrchestrator` — an LLM loop that never sees real tool schemas, only two meta-tools (`discover_tools`, `run_task`): `discover_tools` does semantic search over the registry via `core/tool_index.py` (a `ToolIndex` backed by its own regenerable, self-cleaning ChromaDB collection, `tool_index`, separate from the RAG `seismic_knowledge` collection), and `run_task` delegates one self-contained task to a scoped `core/executor_agent.py::ExecutorAgent`, which runs the real tool-calling loop against just the tools it was handed and returns a `TaskResult`. The orchestrator and the classic `SeismicChatBotToolUse` now share their bounded tool-calling loop (`core/tool_loop.py`) and intent-split/RAG dispatch (`core/knowledge_router.py`), extracted so both modes stay in sync. `SeismicOrchestrator` matches `SeismicChatBotToolUse`'s public surface (`new_session`/`process_single_input`/`attach_image`/`session_id`), so `interfaces/gradio_interface.py::create_chat_interface(base_bot=...)` can host either. The classic tool-use loop (`--mode tool-use`) remains the default. Design/rationale: `docs/superpowers/specs/2026-08-29-orchestrator-subagent-workflow-design.md`.
 
-## Decision trace (agent observability, Tier 0-2)
+## Decision trace (agent observability, Tier 0-3)
 
 Every turn in both modes is traced by `core/turn_trace.py::TraceRecorder`, hanging off the
 per-session `ContextManager` (`.trace`). Events record decisions, never content: `intent`
@@ -287,6 +287,24 @@ turn-input snippet and agentic-mode briefs/queries — stays out of spans unless
 `install()` builds a module-local
 TracerProvider (never mutates the global). Tests: `tests/test_otel_translation.py` (pure,
 no SDK), `test_otel_install.py` (importorskip-gated, InMemorySpanExporter).
+
+**Turn transparency (Tier 3):** `core/trace_summary.py::summarize_trace` renders a turn
+record into a curated headline + high-stakes flags (physics warnings, failed tools,
+budget-forced completions, missing auto-plots, auto-filled defaults) + drill-down lines;
+the Gradio UI appends flags to the chat bubble and shows
+`format_trace_markdown` in a collapsed "Decision trace (last turn)" accordion (`respond`
+returns 6 outputs now). Tool warnings are captured in the loop
+(`warnings.catch_warnings(record=True)` around `process_tool_call`) as `physics_warning`
+events — re-logged at WARNING, message capped at 300 chars, exported in OTel spans
+ungated (diagnostic text, same ruling as error strings). `budget_exhausted` carries
+`scope` (tool_loop/meta_loop); `_run_task` early returns emit `run_task` events with
+`error`. Every harvested plot gets a `<plot>.png.prov.json` sidecar
+(`core/provenance.py`: session/turn, producing tool, compacted parameter VALUES, and the
+compute tool behind an auto-chained plot — local reproducibility metadata, deliberately
+values-not-names, never exported; `run_sweep`'s PNG cleanup leaves sidecars behind in the
+tmpdir, and the wedge CSV export gets no sidecar — known limitations). Tests:
+`tests/test_trace_summary.py`, `test_physics_warning_capture.py`,
+`test_run_task_events.py`, `test_provenance.py`, `test_gradio_trace_panel.py`.
 
 ## Tests
 
