@@ -27,7 +27,11 @@ def append_bot_response(chat_history, response):
         reply = response.get("reply") or ""
         trace = response.get("trace")
         if isinstance(trace, dict) and trace.get("events"):
-            flags = summarize_trace(trace)["flags"]
+            try:
+                flags = summarize_trace(trace)["flags"]
+            except Exception as e:
+                logging.getLogger(__name__).warning(f"trace summary failed: {e}")
+                flags = []
             if flags:
                 reply = (reply + "\n\n" + "\n".join(flags)).strip()
         chat_history[-1][1] = reply
@@ -103,7 +107,11 @@ def create_chat_interface(base_bot=None):
             token_usage = session_bot.context_manager.get_token_usage()
             trace = response.get("trace") if isinstance(response, dict) else None
             token_str = format_status(token_usage, trace)
-            trace_md = format_trace_markdown(trace)
+            try:
+                trace_md = format_trace_markdown(trace)
+            except Exception as e:
+                logging.getLogger(__name__).warning(f"trace markdown failed: {e}")
+                trace_md = "_No decision trace for this turn._"
             return "", None, chat_history, token_str, trace_md, session_bot
 
         except Exception as e:

@@ -87,8 +87,8 @@ written inside the tool where the loop can't see it — noted as open).
 - **Values-not-names is deliberate here**: sidecars are local reproducibility metadata
   living next to the artifact, never exported; parameters are compacted via the loop's
   existing `compact_value` (arrays → summary strings) so files stay small and JSON-safe.
-- Known limitation (documented): `run_sweep`'s image cleanup deletes PNGs but not
-  sidecars; orphaned sidecars in the tmpdir are acceptable. CSV exports get no sidecar
+- Known limitation (documented): run_sweep's per-cell plots never get sidecars (recipes
+  run via the WorkflowEngine, not the tool loop). CSV exports get no sidecar
   (written inside the tool).
 
 ## Constraints

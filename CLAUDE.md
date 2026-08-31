@@ -296,13 +296,17 @@ the Gradio UI appends flags to the chat bubble and shows
 returns 6 outputs now). Tool warnings are captured in the loop
 (`warnings.catch_warnings(record=True)` around `process_tool_call`) as `physics_warning`
 events — re-logged at WARNING, message capped at 300 chars, exported in OTel spans
-ungated (diagnostic text, same ruling as error strings). `budget_exhausted` carries
-`scope` (tool_loop/meta_loop); `_run_task` early returns emit `run_task` events with
-`error`. Every harvested plot gets a `<plot>.png.prov.json` sidecar
+ungated (diagnostic text, same ruling as error strings). Known limitation: warning
+capture uses process-global warnings state, so under concurrent Gradio sessions
+(threadpool) a warning from one session's tool can be misattributed to another's trace —
+diagnostic text only; thread-attributed capture is a backlog item. `budget_exhausted`
+carries `scope` (tool_loop/meta_loop); `_run_task` early returns emit `run_task` events
+with `error`. Every harvested plot gets a `<plot>.png.prov.json` sidecar
 (`core/provenance.py`: session/turn, producing tool, compacted parameter VALUES, and the
 compute tool behind an auto-chained plot — local reproducibility metadata, deliberately
-values-not-names, never exported; `run_sweep`'s PNG cleanup leaves sidecars behind in the
-tmpdir, and the wedge CSV export gets no sidecar — known limitations). Tests:
+values-not-names, never exported; run_sweep's per-cell plots never get sidecars (recipes
+run via the WorkflowEngine, not the tool loop), and the wedge CSV export gets no sidecar —
+known limitations). Tests:
 `tests/test_trace_summary.py`, `test_physics_warning_capture.py`,
 `test_run_task_events.py`, `test_provenance.py`, `test_gradio_trace_panel.py`.
 

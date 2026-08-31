@@ -32,3 +32,15 @@ def test_traceless_response_unchanged():
 def test_plain_string_response_still_renders():
     history = append_bot_response([["hi", None]], "plain")
     assert history[-1][1] == "plain"
+
+
+def test_summary_failure_degrades_to_flagless(monkeypatch):
+    import interfaces.gradio_interface as gi
+
+    def boom(trace):
+        raise RuntimeError("summary broke")
+
+    monkeypatch.setattr(gi, "summarize_trace", boom)
+    history = gi.append_bot_response([["hi", None]],
+                                     {"reply": "done", "images": [], "trace": _TRACE})
+    assert history[-1][1] == "done"
