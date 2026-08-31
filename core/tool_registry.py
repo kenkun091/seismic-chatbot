@@ -31,6 +31,7 @@ class ToolSpec:
     defaults: dict = field(default_factory=dict)
     validator: Optional[Callable] = None
     auto_plot: Optional[str] = None
+    session_scoped: bool = False
 
 
 _AVO_PARAMS: dict[str, dict] = {

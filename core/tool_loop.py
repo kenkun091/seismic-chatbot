@@ -13,6 +13,7 @@ import warnings
 import numpy as np
 from typing import Dict, Any, List, Optional
 from core.provenance import write_plot_provenance
+from core.session_handle import SessionHandle
 from core.tool_registry import AUTO_PLOT
 from core.turn_trace import emit_event, usage_dict
 from workflows.engine import WORKFLOW_NAMES
@@ -151,6 +152,10 @@ class ToolLoopRunner:
                     filled[param] = value
                 else:
                     filled.pop(param, None)
+        spec = getattr(self.tool_manager, "specs", {}).get(tool_name)
+        if spec is not None and getattr(spec, "session_scoped", False):
+            filled["_session"] = SessionHandle(self.llm_client, self.tool_manager,
+                                               self.context_manager, self)
         return filled
 
     def harvest_images(self, tool_result: Any, collected: List[str]) -> None:

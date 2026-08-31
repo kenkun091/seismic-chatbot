@@ -77,3 +77,11 @@ def test_write_provenance_never_raises_on_uncompactable_input():
     # non-numeric ndarray > 12 elements: compact_value raises on .max()
     poisoned = {"grid": np.array(["a", "b"] * 10)}
     runner._write_provenance(["/tmp/does-not-matter.png"], "t", poisoned)  # must not raise
+
+
+def test_existing_sidecar_is_not_overwritten(tmp_path):
+    png = tmp_path / "plot.png"
+    png.write_bytes(b"x")
+    write_plot_provenance(str(png), {"tool": "first"})
+    write_plot_provenance(str(png), {"tool": "second"})
+    assert json.loads((tmp_path / "plot.png.prov.json").read_text())["tool"] == "first"

@@ -45,6 +45,8 @@ class ToolManager:
         spec = self.specs.get(tool_name)
         if spec is None:
             raise ValueError(f"Unknown tool: {tool_name}")
+        params = dict(params)
+        session = params.pop("_session", None)  # hidden handle, never validated/logged
         # Fill defaults BEFORE validating so required-after-default works correctly.
         full_params = dict(spec.defaults)
         full_params.update(params)
@@ -52,6 +54,8 @@ class ToolManager:
         if not is_valid:
             raise ValueError(msg)
         logger.info(f"Calling {tool_name} with {full_params}")
+        if getattr(spec, "session_scoped", False):
+            return spec.fn(**full_params, _session=session)
         return spec.fn(**full_params)
 
     def process_tool_call(self, tool_name: str, tool_input: Dict[str, Any]) -> Any:
