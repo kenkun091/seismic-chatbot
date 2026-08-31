@@ -16,6 +16,7 @@ from tools.rag_tools import knowledge_rag
 from tools.synthetic_tools import create_synthetic_seismogram, plot_synthetic_seismogram
 from tools.outcrop_tools import interpret_outcrop, plot_outcrop_interpretation, outcrop_to_model
 from tools.section_tools import synthetic_section_from_model, plot_seismic_section
+from tools.skill_tools import run_skill, save_skill, list_skills
 from workflows.adapters import predict_elastic_layer
 from workflows.engine import WORKFLOW_REGISTRY
 from tools.parameter_validation import validate_make_ricker, validate_wedge_model, validate_avo, validate_synthetic_seismogram
@@ -709,6 +710,50 @@ REGISTRY = [
         },
         required=["section", "parameters"],
         defaults={"axis": None, "model": None, "display": "image"},
+    ),
+    ToolSpec(
+        name="run_skill",
+        fn=run_skill,
+        description=("Run a saved reusable skill by name with parameter values. Skills "
+                     "appear in discovery as 'skill:<name>' cards; list_skills shows them "
+                     "with their parameters. mode 'auto' replays the recorded tool chain "
+                     "when the skill has one (deterministic, no reasoning) and otherwise "
+                     "follows the skill's procedure with its scoped tools; 'replay' and "
+                     "'guided' force one or the other."),
+        params={
+            "name": {"type": "string", "description": "Skill name (without the 'skill:' prefix)."},
+            "params": {"type": "object", "description": "Parameter values keyed by the skill's parameter names."},
+            "mode": {"type": "string", "enum": ["auto", "replay", "guided"],
+                     "description": "auto | replay | guided."},
+        },
+        required=["name"],
+        defaults={"params": {}, "mode": "auto"},
+        session_scoped=True,
+    ),
+    ToolSpec(
+        name="save_skill",
+        fn=save_skill,
+        description=("Save the PREVIOUS turn's tool calls as a reusable, parameterized skill. "
+                     "parameters maps each new parameter name to the value it had in that turn "
+                     "(e.g. {\"freq\": 30}); every matching tool argument becomes a slot. "
+                     "Use when the user asks to save/remember/reuse what was just done."),
+        params={
+            "name": {"type": "string", "description": "New skill name: lowercase letters, digits, underscores."},
+            "description": {"type": "string", "description": "One-line description of what the skill does."},
+            "parameters": {"type": "object", "description": "{parameter_name: value_used_last_turn, ...}"},
+            "overwrite": {"type": "boolean", "description": "Replace an existing skill of the same name."},
+        },
+        required=["name", "description", "parameters"],
+        defaults={"overwrite": False},
+        session_scoped=True,
+    ),
+    ToolSpec(
+        name="list_skills",
+        fn=list_skills,
+        description="List the saved reusable skills with their parameters.",
+        params={},
+        required=[],
+        session_scoped=True,
     ),
 ]
 

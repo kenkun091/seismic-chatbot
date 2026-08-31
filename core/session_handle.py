@@ -12,3 +12,4 @@ class SessionHandle:
     tool_manager: Any
     context_manager: Any
     runner: Any  # the ToolLoopRunner executing the current call
+    tool_index: Any = None  # ToolIndex, if the running mode has one (agentic only)

@@ -155,7 +155,8 @@ class ToolLoopRunner:
         spec = getattr(self.tool_manager, "specs", {}).get(tool_name)
         if spec is not None and getattr(spec, "session_scoped", False):
             filled["_session"] = SessionHandle(self.llm_client, self.tool_manager,
-                                               self.context_manager, self)
+                                               self.context_manager, self,
+                                               tool_index=getattr(self, "tool_index", None))
         return filled
 
     def harvest_images(self, tool_result: Any, collected: List[str]) -> None:

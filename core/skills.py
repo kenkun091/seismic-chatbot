@@ -322,3 +322,62 @@ def get_registry() -> SkillRegistry:
 def set_registry(registry: Optional[SkillRegistry]) -> None:
     global _REGISTRY
     _REGISTRY = registry
+
+
+# --- execution -----------------------------------------------------------------
+
+def execute_skill(skill: Skill, params: Optional[Dict[str, Any]], mode: str,
+                  session: Any) -> Dict[str, Any]:
+    """Run a skill: deterministic replay of its chain through the session's
+    ToolLoopRunner.execute_call, or LLM-guided via a scoped ExecutorAgent."""
+    from core.turn_trace import emit_event  # lazy: keep this module import-light
+    if session is None:
+        raise ValueError("run_skill requires a live session (call it from the chat loop)")
+    cm = session.context_manager
+    if (cm.get_context("_skill_depth") or 0) >= 1:
+        raise ValueError("run_skill cannot be invoked from inside a running skill")
+    if mode not in ("auto", "replay", "guided"):
+        raise ValueError(f"mode must be auto, replay or guided (got {mode!r})")
+    if mode == "replay" and not skill.chain:
+        raise ValueError(f"skill '{skill.name}' has no recorded chain; use mode='guided'")
+    bound = resolve_params(skill, params or {})
+    use_replay = mode == "replay" or (mode == "auto" and bool(skill.chain))
+    runner = session.runner
+    cm.set_context("_skill_depth", 1)
+    runner.current_skill = skill.name
+    try:
+        if use_replay:
+            images: List[str] = []
+            steps: List[dict] = []
+            last: Any = None
+            for step in skill.chain:
+                args = substitute(step["args"], bound)
+                try:
+                    last = runner.execute_call(step["tool"], args, images)
+                    steps.append({"tool": step["tool"], "ok": True})
+                except Exception as e:
+                    steps.append({"tool": step["tool"], "ok": False, "error": str(e)})
+                    emit_event(cm, "tool_call", tool=step["tool"], ok=False, error=str(e))
+                    emit_event(cm, "skill_run", name=skill.name, mode="replay",
+                               n_steps=len(steps), error=str(e))
+                    return {"mode": "replay", "steps": steps,
+                            "error": f"step {step['tool']} failed: {e}",
+                            "extra_image_paths": images}
+            emit_event(cm, "skill_run", name=skill.name, mode="replay", n_steps=len(steps))
+            return {"mode": "replay", "steps": steps,
+                    "result": runner.compact_value(last), "extra_image_paths": images}
+        from core.executor_agent import ExecutorAgent
+        brief = fill_procedure(skill.procedure, bound)
+        result = ExecutorAgent(session.llm_client, session.tool_manager, cm).run(
+            brief, list(skill.tools))
+        emit_event(cm, "skill_run", name=skill.name, mode="guided",
+                   n_steps=len(result.tools_used))
+        out: Dict[str, Any] = {"mode": "guided", "summary": result.summary,
+                               "tools_used": list(result.tools_used),
+                               "extra_image_paths": list(result.images)}
+        if result.error:
+            out["error"] = result.error
+        return out
+    finally:
+        runner.current_skill = None
+        cm.set_context("_skill_depth", 0)

@@ -64,6 +64,10 @@ Rules:
 - After an interpret_outcrop task, report the regions and the scale estimate WITH its
   confidence, and ask the user to confirm the height before building the model if
   confidence is low or no scale was found.
+- discover_tools may return 'skill:<name>' cards: these are saved reusable flows. Run one by
+  delegating a task whose tool_names include run_skill and whose brief says to call
+  run_skill with that name and the parameter values. To save the previous turn's work as a
+  skill, delegate to save_skill.
 - Any plot an executor produces is displayed to the user automatically — never mention
   image file paths.
 - In your final answer, state the key quantitative results (tuning thickness, AVO class,
@@ -80,6 +84,12 @@ class SeismicOrchestrator:
         self.tool_manager = tool_manager or ToolManager()
         self.knowledge_base = knowledge_base or KnowledgeBase(llm_client=self.llm_client)
         self.tool_index = tool_index or ToolIndex()
+        if tool_index is None:  # injected fakes need not support refresh
+            from core.skills import get_registry
+            try:
+                self.tool_index.refresh(get_registry().specs())
+            except Exception as e:
+                logger.warning(f"skill discovery refresh failed: {e}")
         self.context_manager = ContextManager()  # per-session, never shared
         self.session_id = uuid.uuid4().hex
         self.context_manager.trace.session_id = self.session_id
@@ -205,6 +215,7 @@ class SeismicOrchestrator:
             return (f"Unknown tool name(s): {', '.join(unknown)}. "
                     f"Use names exactly as returned by discover_tools.")
         executor = ExecutorAgent(self.llm_client, self.tool_manager, self.context_manager)
+        executor._loop.tool_index = self.tool_index
         result = executor.run(brief, tool_names)
         emit_event(self.context_manager, "run_task", brief=brief[:200],
                    tool_names=list(tool_names), tools_used=result.tools_used,
