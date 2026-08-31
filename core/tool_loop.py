@@ -12,6 +12,7 @@ import time
 import warnings
 import numpy as np
 from typing import Dict, Any, List, Optional
+from core.provenance import write_plot_provenance
 from core.tool_registry import AUTO_PLOT
 from core.turn_trace import emit_event, usage_dict
 from workflows.engine import WORKFLOW_NAMES
@@ -178,6 +179,26 @@ class ToolLoopRunner:
         for path in paths:
             if path not in collected:
                 collected.append(path)
+
+    def _write_provenance(self, paths: List[str], tool_name: str,
+                          tool_input: Dict[str, Any],
+                          compute_tool: Optional[str] = None,
+                          compute_input: Optional[Dict[str, Any]] = None) -> None:
+        """Sidecar every newly harvested plot with what produced it."""
+        if not paths:
+            return
+        trace = getattr(self.context_manager, "trace", None)
+        payload: Dict[str, Any] = {
+            "session": getattr(trace, "session_id", None),
+            "turn": getattr(trace, "turn", None),
+            "tool": tool_name,
+            "parameters": self.compact_value(tool_input),
+        }
+        if compute_tool:
+            payload["compute_tool"] = compute_tool
+            payload["compute_parameters"] = self.compact_value(compute_input or {})
+        for path in paths:
+            write_plot_provenance(path, payload)
 
     def handle_automatic_chaining(self, tool_name: str, tool_input: Dict[str, Any], tool_result: Any) -> Optional[Dict[str, Any]]:
         """
@@ -502,13 +523,21 @@ class ToolLoopRunner:
                     "content": self.compact_tool_result(tool_result)
                 })
                 self.update_context(tool_name, tool_input, tool_result)
+                before_direct = len(collected_images)
                 self.harvest_images(tool_result, collected_images)
+                self._write_provenance(collected_images[before_direct:],
+                                       tool_name, tool_input)
 
                 # Auto-chaining still runs the partner plot tool; its plot now
                 # joins the harvest instead of ending the turn.
                 chained_result = self.handle_automatic_chaining(tool_name, tool_input, tool_result)
                 if chained_result:
+                    before_chained = len(collected_images)
                     self.harvest_images(chained_result, collected_images)
+                    self._write_provenance(collected_images[before_chained:],
+                                           AUTO_PLOT.get(tool_name) or "auto_plot",
+                                           {}, compute_tool=tool_name,
+                                           compute_input=tool_input)
                     emit_event(self.context_manager, "auto_plot", compute=tool_name,
                                plot=AUTO_PLOT.get(tool_name), fired=True)
                 elif AUTO_PLOT.get(tool_name):
