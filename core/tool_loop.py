@@ -9,6 +9,7 @@ import logging
 import re
 import json
 import time
+import warnings
 import numpy as np
 from typing import Dict, Any, List, Optional
 from core.tool_registry import AUTO_PLOT
@@ -481,7 +482,15 @@ class ToolLoopRunner:
                 defaults_filled = sorted(
                     k for k in spec.defaults if k not in tool_input) if spec else []
                 started = time.perf_counter()
-                tool_result = self.tool_manager.process_tool_call(tool_name, tool_input)
+                with warnings.catch_warnings(record=True) as caught:
+                    warnings.simplefilter("always")
+                    tool_result = self.tool_manager.process_tool_call(tool_name, tool_input)
+                for w in caught:
+                    message = str(w.message)[:300]
+                    logger.warning(f"{tool_name}: {w.category.__name__}: {message}")
+                    emit_event(self.context_manager, "physics_warning",
+                               tool=tool_name, category=w.category.__name__,
+                               message=message)
                 emit_event(self.context_manager, "tool_call", tool=tool_name, ok=True,
                            ms=round((time.perf_counter() - started) * 1000, 1),
                            injected=injected, overridden=overridden,
