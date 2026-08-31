@@ -184,21 +184,28 @@ class ToolLoopRunner:
                           tool_input: Dict[str, Any],
                           compute_tool: Optional[str] = None,
                           compute_input: Optional[Dict[str, Any]] = None) -> None:
-        """Sidecar every newly harvested plot with what produced it."""
+        """Sidecar every newly harvested plot with what produced it.
+
+        Must never raise: a provenance failure may not fail a successful
+        tool call.
+        """
         if not paths:
             return
-        trace = getattr(self.context_manager, "trace", None)
-        payload: Dict[str, Any] = {
-            "session": getattr(trace, "session_id", None),
-            "turn": getattr(trace, "turn", None),
-            "tool": tool_name,
-            "parameters": self.compact_value(tool_input),
-        }
-        if compute_tool:
-            payload["compute_tool"] = compute_tool
-            payload["compute_parameters"] = self.compact_value(compute_input or {})
-        for path in paths:
-            write_plot_provenance(path, payload)
+        try:
+            trace = getattr(self.context_manager, "trace", None)
+            payload: Dict[str, Any] = {
+                "session": getattr(trace, "session_id", None),
+                "turn": getattr(trace, "turn", None),
+                "tool": tool_name,
+                "parameters": self.compact_value(tool_input),
+            }
+            if compute_tool:
+                payload["compute_tool"] = compute_tool
+                payload["compute_parameters"] = self.compact_value(compute_input or {})
+            for path in paths:
+                write_plot_provenance(path, payload)
+        except Exception as e:
+            logger.warning(f"provenance skipped for {tool_name}: {e}")
 
     def handle_automatic_chaining(self, tool_name: str, tool_input: Dict[str, Any], tool_result: Any) -> Optional[Dict[str, Any]]:
         """

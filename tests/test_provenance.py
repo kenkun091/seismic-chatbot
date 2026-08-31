@@ -63,3 +63,17 @@ def test_loop_writes_sidecar_for_auto_plotted_ricker():
     assert data["compute_tool"] == "make_ricker"
     assert data["compute_parameters"]["frequency"] == 30
     assert data["tool"] == "plot_ricker"
+
+
+def test_write_provenance_never_raises_on_uncompactable_input():
+    import numpy as np
+
+    from core.context_manager import ContextManager
+    from core.tool_loop import ToolLoopRunner
+
+    cm = ContextManager()
+    cm.trace.persist_dir = ""
+    runner = ToolLoopRunner(None, None, cm)
+    # non-numeric ndarray > 12 elements: compact_value raises on .max()
+    poisoned = {"grid": np.array(["a", "b"] * 10)}
+    runner._write_provenance(["/tmp/does-not-matter.png"], "t", poisoned)  # must not raise
