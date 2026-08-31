@@ -103,6 +103,7 @@ class SeismicOrchestrator:
     def process_single_input(self, user_input: str) -> Dict[str, Any]:
         trace = self.context_manager.trace
         trace.begin_turn(user_input)
+        self.context_manager.begin_turn_recording(user_input)
         try:
             if self._knowledge_router.is_knowledge_question(user_input):
                 reply = self._knowledge_router.handle_knowledge_question(user_input)

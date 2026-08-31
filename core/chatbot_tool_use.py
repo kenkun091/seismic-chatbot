@@ -275,6 +275,7 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
         """
         trace = self.context_manager.trace
         trace.begin_turn(user_input)
+        self.context_manager.begin_turn_recording(user_input)
         try:
             # Check if this is a knowledge question that should use RAG
             if self._is_knowledge_question(user_input):

@@ -92,6 +92,15 @@ class ContextManager:
         Alias for update_context for compatibility.
         """
         self.update_context(key, value)
+
+    def begin_turn_recording(self, user_input: str) -> None:
+        """Rotate the in-memory record of tool calls (name + resolved args) so
+        save_skill can capture the PREVIOUS turn while the current one runs.
+        Never persisted: argument values stay in process memory only."""
+        self.set_context("last_turn_calls", self.get_context("current_turn_calls") or [])
+        self.set_context("last_turn_input", self.get_context("current_turn_input") or "")
+        self.set_context("current_turn_calls", [])
+        self.set_context("current_turn_input", user_input)
         
     def update_token_usage(self, usage) -> None:
         """

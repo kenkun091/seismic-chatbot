@@ -59,6 +59,7 @@ class ToolLoopRunner:
         self.tool_manager = tool_manager
         self.context_manager = context_manager
         self.max_tool_rounds = max_tool_rounds
+        self.current_skill: Optional[str] = None
 
     def parse_tool_input(self, tool_input: str) -> Dict[str, Any]:
         """
@@ -202,10 +203,70 @@ class ToolLoopRunner:
             if compute_tool:
                 payload["compute_tool"] = compute_tool
                 payload["compute_parameters"] = self.compact_value(compute_input or {})
+            if self.current_skill:
+                payload["skill"] = self.current_skill
             for path in paths:
                 write_plot_provenance(path, payload)
         except Exception as e:
             logger.warning(f"provenance skipped for {tool_name}: {e}")
+
+    def execute_call(self, tool_name: str, raw_input: Dict[str, Any],
+                     collected_images: List[str]) -> Any:
+        """Run ONE tool with everything a live turn does around it: context
+        injection, warning capture, tool_call event, context update, image
+        harvest + provenance sidecar, auto-plot chaining, and the in-memory
+        current_turn_calls recording used by save_skill. Shared by run() and
+        by skill replay. Raises on tool failure; returns the raw result."""
+        tool_input = self.inject_context_inputs(tool_name, raw_input)
+        public_input = {k: v for k, v in tool_input.items() if k != "_session"}
+        injected = sorted(k for k in public_input if k not in raw_input)
+        overridden = sorted(
+            k for k in raw_input
+            if k in tool_input
+            and isinstance(raw_input.get(k), str)
+            and isinstance(tool_input.get(k), str)
+            and raw_input[k] != tool_input[k])
+        spec = getattr(self.tool_manager, "specs", {}).get(tool_name)
+        defaults_filled = sorted(
+            k for k in spec.defaults if k not in tool_input) if spec else []
+        started = time.perf_counter()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            tool_result = self.tool_manager.process_tool_call(tool_name, tool_input)
+        for w in caught:
+            message = str(w.message)[:300]
+            logger.warning(f"{tool_name}: {w.category.__name__}: {message}")
+            emit_event(self.context_manager, "physics_warning",
+                       tool=tool_name, category=w.category.__name__,
+                       message=message)
+        emit_event(self.context_manager, "tool_call", tool=tool_name, ok=True,
+                   ms=round((time.perf_counter() - started) * 1000, 1),
+                   injected=injected, overridden=overridden,
+                   defaults_filled=defaults_filled)
+        calls = self.context_manager.get_context("current_turn_calls")
+        if isinstance(calls, list):
+            calls.append({"tool": tool_name, "args": dict(public_input), "ok": True})
+        self.update_context(tool_name, tool_input, tool_result)
+        before_direct = len(collected_images)
+        self.harvest_images(tool_result, collected_images)
+        self._write_provenance(collected_images[before_direct:], tool_name, public_input)
+        chained_result = self.handle_automatic_chaining(tool_name, tool_input, tool_result)
+        if chained_result:
+            before_chained = len(collected_images)
+            self.harvest_images(chained_result, collected_images)
+            self._write_provenance(collected_images[before_chained:],
+                                   AUTO_PLOT.get(tool_name) or "auto_plot",
+                                   {}, compute_tool=tool_name,
+                                   compute_input=public_input)
+            emit_event(self.context_manager, "auto_plot", compute=tool_name,
+                       plot=AUTO_PLOT.get(tool_name), fired=True)
+        elif AUTO_PLOT.get(tool_name):
+            logger.warning(
+                f"auto-plot {AUTO_PLOT[tool_name]} did not run after "
+                f"{tool_name} (missing context or plot error)")
+            emit_event(self.context_manager, "auto_plot", compute=tool_name,
+                       plot=AUTO_PLOT[tool_name], fired=False)
+        return tool_result
 
     def handle_automatic_chaining(self, tool_name: str, tool_input: Dict[str, Any], tool_result: Any) -> Optional[Dict[str, Any]]:
         """
@@ -498,61 +559,13 @@ class ToolLoopRunner:
 
             try:
                 raw_input = self.parse_tool_input(tool_input_str)
-                tool_input = self.inject_context_inputs(tool_name, raw_input)
-                injected = sorted(k for k in tool_input if k not in raw_input)
-                overridden = sorted(
-                    k for k in raw_input
-                    if k in tool_input
-                    and isinstance(raw_input.get(k), str)
-                    and isinstance(tool_input.get(k), str)
-                    and raw_input[k] != tool_input[k])
-                spec = getattr(self.tool_manager, "specs", {}).get(tool_name)
-                defaults_filled = sorted(
-                    k for k in spec.defaults if k not in tool_input) if spec else []
-                started = time.perf_counter()
-                with warnings.catch_warnings(record=True) as caught:
-                    warnings.simplefilter("always")
-                    tool_result = self.tool_manager.process_tool_call(tool_name, tool_input)
-                for w in caught:
-                    message = str(w.message)[:300]
-                    logger.warning(f"{tool_name}: {w.category.__name__}: {message}")
-                    emit_event(self.context_manager, "physics_warning",
-                               tool=tool_name, category=w.category.__name__,
-                               message=message)
-                emit_event(self.context_manager, "tool_call", tool=tool_name, ok=True,
-                           ms=round((time.perf_counter() - started) * 1000, 1),
-                           injected=injected, overridden=overridden,
-                           defaults_filled=defaults_filled)
+                tool_result = self.execute_call(tool_name, raw_input, collected_images)
                 tools_used.append(tool_name)
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
                     "content": self.compact_tool_result(tool_result)
                 })
-                self.update_context(tool_name, tool_input, tool_result)
-                before_direct = len(collected_images)
-                self.harvest_images(tool_result, collected_images)
-                self._write_provenance(collected_images[before_direct:],
-                                       tool_name, tool_input)
-
-                # Auto-chaining still runs the partner plot tool; its plot now
-                # joins the harvest instead of ending the turn.
-                chained_result = self.handle_automatic_chaining(tool_name, tool_input, tool_result)
-                if chained_result:
-                    before_chained = len(collected_images)
-                    self.harvest_images(chained_result, collected_images)
-                    self._write_provenance(collected_images[before_chained:],
-                                           AUTO_PLOT.get(tool_name) or "auto_plot",
-                                           {}, compute_tool=tool_name,
-                                           compute_input=tool_input)
-                    emit_event(self.context_manager, "auto_plot", compute=tool_name,
-                               plot=AUTO_PLOT.get(tool_name), fired=True)
-                elif AUTO_PLOT.get(tool_name):
-                    logger.warning(
-                        f"auto-plot {AUTO_PLOT[tool_name]} did not run after "
-                        f"{tool_name} (missing context or plot error)")
-                    emit_event(self.context_manager, "auto_plot", compute=tool_name,
-                               plot=AUTO_PLOT[tool_name], fired=False)
 
                 # Loop so the model can narrate the result or chain another tool.
             except Exception as e:
