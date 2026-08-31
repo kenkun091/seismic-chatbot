@@ -48,7 +48,7 @@ def test_loop_injects_session_handle_and_keeps_it_out_of_events_and_recording():
     assert seen["session"].context_manager is cm
     evt = [e for e in cm.trace.events if e["t"] == "tool_call"][0]
     assert evt["injected"] == []
-    assert cm.get_context("current_turn_calls")[0]["args"] == {}
+    assert cm.get_context("current_turn_calls") == []  # session-scoped tools are never recorded
 
 
 def test_tool_index_refresh_adds_and_removes_extra_cards(tmp_path):
