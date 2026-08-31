@@ -537,7 +537,7 @@ class ToolLoopRunner:
         logger.warning(
             f"Tool-round budget ({self.max_tool_rounds}) exhausted; forcing "
             f"tool-free completion")
-        emit_event(self.context_manager, "budget_exhausted", rounds=self.max_tool_rounds)
+        emit_event(self.context_manager, "budget_exhausted", rounds=self.max_tool_rounds, scope="tool_loop")
 
         # Round budget exhausted while still calling tools: force a tool-free
         # completion so the user gets a textual answer instead of nothing.
