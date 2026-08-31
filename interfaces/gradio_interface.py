@@ -3,6 +3,7 @@ from typing import Optional
 
 import gradio as gr
 from core.chatbot_tool_use import SeismicChatBotToolUse
+from core.skills import CONTEXT_PARAMS, capture_skill, get_registry
 from core.trace_summary import format_trace_markdown, summarize_trace
 from config.example_prompts import EXAMPLE_PROMPTS, search_prompts, get_random_prompts
 from config.settings import SEISMIC_UPLOAD_DIR, MAX_IMAGE_MB
@@ -55,6 +56,59 @@ def format_status(token_usage, trace=None):
     if tools:
         status += " | Tools: " + " → ".join(tools)
     return status
+
+
+def parse_parameter_lines(text: str) -> dict:
+    """'slot=value' per line → {slot: typed value}; numbers become int/float."""
+    params = {}
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if "=" not in line:
+            raise ValueError(f"expected 'name=value', got {line!r}")
+        key, value = (part.strip() for part in line.split("=", 1))
+        try:
+            params[key] = int(value)
+        except ValueError:
+            try:
+                params[key] = float(value)
+            except ValueError:
+                params[key] = value
+    return params
+
+
+def save_skill_from_ui(session_bot, name, description, params_text) -> str:
+    """Save the most recent completed turn as a skill; returns status markdown."""
+    if session_bot is None:
+        return "⚠️ Send a message first — there is no turn to save yet."
+    try:
+        cm = session_bot.context_manager
+        calls = cm.get_context("current_turn_calls") or []
+        data = capture_skill((name or "").strip(), (description or "").strip(),
+                             parse_parameter_lines(params_text), calls,
+                             cm.get_context("current_turn_input") or "",
+                             set(CONTEXT_PARAMS))
+        registry = get_registry()
+        path = registry.save(data)
+        index = getattr(session_bot, "tool_index", None)
+        if index is not None and hasattr(index, "refresh"):
+            index.refresh(registry.specs())
+        return f"✅ Saved skill **{name}** ({len(data['chain'])} step(s)) → `{path}`"
+    except Exception as e:
+        return f"⚠️ Could not save skill: {e}"
+
+
+def skills_markdown() -> str:
+    skills = get_registry().list()
+    if not skills:
+        return "_No skills saved yet._"
+    lines = []
+    for s in skills:
+        params = ", ".join(f"{p}={sch.get('default', '?')}" for p, sch in s["parameters"].items())
+        kind = "replay" if s["has_chain"] else "guided"
+        lines.append(f"- **{s['name']}** ({kind}, {s['source']}) — {s['description']}  \n  parameters: {params or 'none'}")
+    return "\n".join(lines)
 
 
 DEFAULT_IMAGE_REQUEST = "Interpret this outcrop photo."
@@ -206,6 +260,16 @@ def create_chat_interface(base_bot=None):
                 with gr.Accordion("🔍 Decision trace (last turn)", open=False):
                     trace_display = gr.Markdown("_No decision trace yet._")
 
+                with gr.Accordion("🧩 Skills", open=False):
+                    skills_display = gr.Markdown(skills_markdown())
+                    with gr.Row():
+                        skill_name = gr.Textbox(label="Name", placeholder="tuning_from_petro", scale=2)
+                        skill_desc = gr.Textbox(label="Description", placeholder="What it does", scale=3)
+                    skill_params = gr.Textbox(label="Parameters (one per line: name=value used last turn)",
+                                              placeholder="freq=30\nphit=0.25", lines=3)
+                    save_btn = gr.Button("💾 Save last turn as skill")
+                    save_status = gr.Markdown("")
+
             with gr.Column(scale=2):
                 # Example prompts section
                 gr.Markdown("### 📋 Quick Examples")
@@ -301,7 +365,14 @@ def create_chat_interface(base_bot=None):
                      [msg, photo, chat_display, token_usage_display, trace_display, session_state])
         msg.submit(respond, [msg, photo, chat_display, session_state],
                    [msg, photo, chat_display, token_usage_display, trace_display, session_state])
-    
+
+        def on_save_skill(name, description, params_text, session_bot):
+            status = save_skill_from_ui(session_bot, name, description, params_text)
+            return status, skills_markdown()
+
+        save_btn.click(on_save_skill, [skill_name, skill_desc, skill_params, session_state],
+                       [save_status, skills_display])
+
     return demo
 
 if __name__ == "__main__":
