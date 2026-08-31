@@ -36,3 +36,7 @@ exclude = ["tests*"]
 [tool.setuptools.dynamic]
 # Single source of truth for runtime deps stays in requirements.txt.
 dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools.package-data]
+# Built-in skills ship with the wheel (loaded from <package>/skills/ at runtime).
+"*" = ["../skills/*.yaml"]
