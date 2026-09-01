@@ -344,7 +344,7 @@ def test_chat_edits_shared_context_and_bumps_version(store, upload_dir, outcrop_
     llm = _ScriptedLLM([
         {"content": "", "usage": None,
          "tool_calls": [_FakeToolCall("outcrop_to_model",
-                                      '{"overrides": {"sand": {"fluid": "gas"}}, "num_traces": 11}')]},
+                                      '{"overrides": {"sand": {"fluid": "gas", "porosity": 0.25}}, "num_traces": 11}')]},
         {"content": "<reply>sand is now gas-filled</reply>", "tool_calls": None, "usage": None},
     ])
     base = SeismicChatBotToolUse(llm_client=llm, tool_manager=ToolManager(), knowledge_base=object())
@@ -368,6 +368,8 @@ def test_chat_edits_shared_context_and_bumps_version(store, upload_dir, outcrop_
     assert body["trace"]["tools_used"] == ["outcrop_to_model"]
     after = store.get(sid).bot.context_manager.get_context("last_earth_model")
     assert after is not before
+    # override sets gas AND porosity 0.25: default sandstone porosity (0.20) sits near
+    # the brine/gas Vp crossover, so fluid alone would be indeterminate; at phit=0.25
     # gas lowers Vp inside the sandstone region (facies id 1) relative to the water case
     mask = after["facies"] == 1
     assert mask.any()
