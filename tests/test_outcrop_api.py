@@ -88,6 +88,17 @@ def test_session_cap_returns_503(client):
     assert r.status_code == 503 and "limit" in r.json()["error"]
 
 
+def test_route_returns_409_when_session_is_busy(client, sid, store):
+    entry = store.get(sid)
+    assert entry.lock.acquire(blocking=False)
+    try:
+        r = client.get(f"/sessions/{sid}/state")
+        assert r.status_code == 409
+        assert "busy" in r.json()["error"]
+    finally:
+        entry.lock.release()
+
+
 def test_auth_dependency_applies_to_every_session_route(store, upload_dir):
     app = FastAPI()
     install_error_handlers(app)
@@ -223,6 +234,15 @@ def test_put_interpretation_validation_and_caps(client, sid, outcrop_image):
             "scale": {}, "background_lithology": "shale", "mode": "bands"}
     r = client.put(f"/sessions/{sid}/interpretation", json=many)
     assert r.status_code == 413
+
+
+def test_put_interpretation_rejects_oversized_content_length_without_reading_body(client, sid):
+    # A declared Content-Length over the cap must be rejected before the body is read
+    # at all — regardless of what bytes are actually sent.
+    r = client.request("PUT", f"/sessions/{sid}/interpretation", content=b"x",
+                       headers={"Content-Length": "2000000"})
+    assert r.status_code == 413
+    assert "exceeds" in r.json()["error"]
 
 
 def test_put_interpretation_ignores_client_supplied_image_path(client, sid, store):

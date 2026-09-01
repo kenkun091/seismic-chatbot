@@ -71,6 +71,11 @@ class SessionStore:
             raise SessionNotFound(session_id)
 
     def delete(self, session_id: str) -> None:
+        # If the entry's lock is currently held by an in-flight request, this raises
+        # SessionBusy instead of deleting out from under it. Consequence: a session
+        # wedged behind a hung/stuck request can be neither deleted nor swept (see
+        # sweep() below) until the process restarts — deliberate, since we never want
+        # to remove a session's files/context while a request may still touch them.
         with self._guard:
             try:
                 entry = self._entries[session_id]
@@ -88,6 +93,10 @@ class SessionStore:
             entry.lock.release()
 
     def sweep(self) -> List[str]:
+        # Same wedged-session consequence as delete(): an expired entry whose lock is
+        # held by a hung request is silently skipped here (acquire fails) rather than
+        # force-reclaimed, so it keeps consuming a session slot until that lock frees
+        # or the process restarts.
         now = self._clock()
         expired: List[Tuple[str, SessionEntry]] = []
         with self._guard:

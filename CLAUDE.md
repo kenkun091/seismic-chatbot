@@ -55,6 +55,8 @@ pytest tests/test_tools.py::<name> -q          # single test
 | `MAX_IMAGE_MB` | `10` | Max size (MB) accepted for an uploaded outcrop photo (`tools/image_safety.py`). |
 | `SESSION_TTL_SECONDS` | `7200` | Idle lifetime of a `/sessions/{id}` web-client session before its files are swept (`interfaces/sessions.py`). |
 | `MAX_SESSIONS` | `50` | Cap on live web-client sessions; `POST /sessions` returns `503` beyond it. |
+| `SESSION_RATE_MAX` | `120` | Max `/sessions`-route requests per client per window — separate budget from the billed `/chat` limiter. |
+| `SESSION_RATE_WINDOW_SECONDS` | `60` | Sliding-window length for the `/sessions`-route rate limiter. |
 
 **Other**
 | Var | Effect |
@@ -232,11 +234,16 @@ session context); `GET .../state` (`version` bumps whenever `last_outcrop` /
 files registered on that session. Every tool route runs through
 `ToolLoopRunner.execute_call(..., auto_plot=False)`. `interfaces/sessions.py::SessionStore`
 holds one `SeismicChatBotToolUse` session per id with a per-request lock (`409` when busy),
-idle TTL and cap. All routes use the `/chat` key gate. The client bundle (`webapp/dist`,
+idle TTL and cap. All routes require the `X-API-Key` gate (`enforce_session_policy`). The client bundle (`webapp/dist`,
 built with `npm run build`) is served at `/app` when present. Errors are `{"error": msg}`
 with 400 (tool/validator), 404 (session), 409 (busy), 413 (caps), 503 (no vision creds /
 session cap). Tests: `tests/test_sessions.py`, `test_serialize.py`, `test_outcrop_api.py`,
 `test_api_mount.py`.
+
+Session routes are gated by their own auth+rate-limit dependency (`enforce_session_policy`)
+with its own rate budget (`SESSION_RATE_MAX`/`SESSION_RATE_WINDOW_SECONDS`), separate from
+`/chat`'s; only `/chat` and `/interpret` are billed (they call the LLM/VLM), and `/chat`
+keeps its own `CHAT_RATE_MAX` budget untouched.
 
 ## The tool layer is registry-driven (the important architecture)
 

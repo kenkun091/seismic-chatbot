@@ -70,6 +70,21 @@ def test_legacy_chat_unchanged(api):
     assert r.status_code == 200 and r.json()["response"] == "ok"
 
 
+def test_session_routes_have_a_separate_rate_budget_from_chat(api, monkeypatch):
+    from fastapi.testclient import TestClient
+    from interfaces.security import RateLimiter
+
+    monkeypatch.setattr(api, "_session_rate_limiter", RateLimiter(max_requests=1, window_seconds=60))
+    c = TestClient(api.app)
+    r1 = c.post("/sessions", headers={"X-API-Key": "sekret"})
+    assert r1.status_code == 201
+    r2 = c.post("/sessions", headers={"X-API-Key": "sekret"})
+    assert r2.status_code == 429
+    # /chat keeps its own, untouched limiter — still works after /sessions is exhausted.
+    r3 = c.post("/chat", json={"message": "hi"}, headers={"X-API-Key": "sekret"})
+    assert r3.status_code == 200 and r3.json()["response"] == "ok"
+
+
 def test_app_mount_only_when_dist_exists(api):
     from fastapi.testclient import TestClient
     c = TestClient(api.app)

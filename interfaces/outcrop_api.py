@@ -54,6 +54,16 @@ def build_router(store: SessionStore, auth_dependency: Callable, upload_dir: str
         except SessionBusy:
             raise _http(409, "session is busy with another request")
 
+    def _version(sid: str) -> int:
+        """Re-read the version after a route has released the session lock (used by
+        routes that return a fresh `version` post-mutation). A concurrent DELETE can
+        land in that window, so map the resulting SessionNotFound to 404 rather than
+        letting it surface as an unhandled 500."""
+        try:
+            return store.get(sid).version
+        except SessionNotFound:
+            raise _http(404, f"unknown session {sid}")
+
     # -- lifecycle ---------------------------------------------------------
     @router.post("", status_code=201)
     def create_session():
@@ -148,12 +158,19 @@ def build_router(store: SessionStore, auth_dependency: Callable, upload_dir: str
     def interpret(sid: str):
         with session(sid) as entry:
             result, warnings = _run_tool(entry, "interpret_outcrop", {})
-        entry = store.get(sid)
         return {"interpretation": _interp_public(result), "warnings": warnings,
-                "version": entry.version}
+                "version": _version(sid)}
 
     @router.put("/{sid}/interpretation")
     async def put_interpretation(sid: str, request: Request):
+        content_length = request.headers.get("content-length")
+        if content_length is not None:
+            try:
+                declared = int(content_length)
+            except ValueError:
+                declared = None
+            if declared is not None and declared > MAX_INTERPRETATION_BYTES:
+                raise _http(413, "interpretation body exceeds 1 MB")
         raw = await request.body()
         if len(raw) > MAX_INTERPRETATION_BYTES:
             raise _http(413, "interpretation body exceeds 1 MB")
@@ -182,9 +199,8 @@ def build_router(store: SessionStore, auth_dependency: Callable, upload_dir: str
                 normalized["image_path"] = image
                 normalized["image_size"] = list(image_size(image))
             cm.set_context("last_outcrop", normalized)
-        entry = store.get(sid)
         return {"interpretation": _interp_public(normalized), "warnings": [],
-                "version": entry.version}
+                "version": _version(sid)}
 
     # -- model + section + plot ---------------------------------------------
     _MODEL_KEYS = ("height_m", "overrides", "background_lithology", "num_traces",
@@ -198,8 +214,7 @@ def build_router(store: SessionStore, auth_dependency: Callable, upload_dir: str
         args = {k: body[k] for k in _MODEL_KEYS if k in body and body[k] is not None}
         with session(sid) as entry:
             result, warnings = _run_tool(entry, "outcrop_to_model", args)
-        entry = store.get(sid)
-        return {"model": model_summary(result), "warnings": warnings, "version": entry.version}
+        return {"model": model_summary(result), "warnings": warnings, "version": _version(sid)}
 
     @router.post("/{sid}/section")
     def build_section(sid: str, body: Dict[str, Any] = Body(default={})):
@@ -211,8 +226,7 @@ def build_router(store: SessionStore, auth_dependency: Callable, upload_dir: str
             cm = entry.bot.context_manager
             payload = section_payload(cm.get_context("last_section"),
                                       cm.get_context("last_earth_model"))
-        entry = store.get(sid)
-        payload.update({"warnings": warnings, "version": entry.version})
+        payload.update({"warnings": warnings, "version": _version(sid)})
         return payload
 
     @router.get("/{sid}/plot.png")
@@ -249,8 +263,7 @@ def build_router(store: SessionStore, auth_dependency: Callable, upload_dir: str
             else:
                 reply, paths, trace = str(result), [], None
             urls = [f"/sessions/{sid}/files/{store.register_file(entry, p)}" for p in paths]
-        entry = store.get(sid)
-        return {"reply": reply, "images": urls, "trace": trace, "version": entry.version}
+        return {"reply": reply, "images": urls, "trace": trace, "version": _version(sid)}
 
     # -- state -------------------------------------------------------------
     @router.get("/{sid}/state")
@@ -272,7 +285,6 @@ def build_router(store: SessionStore, auth_dependency: Callable, upload_dir: str
                 "model_summary": model_summary(model) if isinstance(model, dict) else None,
                 "section_meta": meta}
 
-    router.state_builder = _state   # used by later routes to return state with results
     return router
 
 
@@ -288,4 +300,4 @@ def install_error_handlers(app) -> None:
     @app.exception_handler(_HTTPException)
     async def _handler(request: Request, exc: _HTTPException):
         detail = exc.detail if isinstance(exc.detail, dict) else {"detail": exc.detail}
-        return JSONResponse(status_code=exc.status_code, content=detail)
+        return JSONResponse(status_code=exc.status_code, content=detail, headers=exc.headers)
