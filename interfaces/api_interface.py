@@ -14,6 +14,10 @@ from interfaces.security import RateLimiter, check_api_key
 # / uvicorn-style launches emit logs instead of silence.
 logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO), format=LOG_FORMAT)
 
+from core.otel_export import install as _install_otel
+
+_install_otel()  # no-op unless OTLP endpoint env vars are set
+
 app = FastAPI(title="Seismic ChatBot API", description="API for seismic modeling assistant")
 
 # Build the heavy components once; each request gets an isolated session so

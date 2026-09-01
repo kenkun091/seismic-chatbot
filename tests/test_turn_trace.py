@@ -165,3 +165,41 @@ def test_trace_dir_off_disables_persistence(monkeypatch):
     finally:
         monkeypatch.undo()
         importlib.reload(settings)
+
+
+def test_exporter_hook_receives_record_and_errors_are_swallowed():
+    from core.turn_trace import (register_trace_exporter, clear_trace_exporters)
+    calls = []
+
+    def good(record):
+        calls.append(record["turn"])
+
+    def bad(record):
+        raise RuntimeError("exporter boom")
+
+    register_trace_exporter(bad)
+    register_trace_exporter(good)
+    register_trace_exporter(good)  # duplicate registration is a no-op
+    try:
+        rec = TraceRecorder(session_id="s", persist_dir="")
+        rec.begin_turn("x")
+        record = rec.end_turn()  # bad exporter must not raise out of end_turn
+        assert calls == [1]
+        assert record["turn"] == 1
+    finally:
+        clear_trace_exporters()
+
+
+def test_unregister_and_clear_exporters():
+    from core.turn_trace import (register_trace_exporter, unregister_trace_exporter,
+                                 clear_trace_exporters, _TRACE_EXPORTERS)
+
+    def f(record):
+        pass
+
+    register_trace_exporter(f)
+    unregister_trace_exporter(f)
+    unregister_trace_exporter(f)  # absent: tolerated
+    register_trace_exporter(f)
+    clear_trace_exporters()
+    assert _TRACE_EXPORTERS == []
