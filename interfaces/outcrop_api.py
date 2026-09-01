@@ -234,6 +234,24 @@ def build_router(store: SessionStore, auth_dependency: Callable, upload_dir: str
             store.register_file(entry, path)
             return FileResponse(path, media_type="image/png")
 
+    # -- chat ----------------------------------------------------------------
+    @router.post("/{sid}/chat")
+    def chat(sid: str, body: Dict[str, Any] = Body(...)):
+        message = str(body.get("message") or "").strip()
+        if not message:
+            raise _http(400, "message must not be empty")
+        with session(sid) as entry:
+            result = entry.bot.process_single_input(message)
+            if isinstance(result, dict) and "reply" in result:
+                reply = str(result["reply"])
+                paths = [str(p) for p in result.get("images") or []]
+                trace = result.get("trace")
+            else:
+                reply, paths, trace = str(result), [], None
+            urls = [f"/sessions/{sid}/files/{store.register_file(entry, p)}" for p in paths]
+        entry = store.get(sid)
+        return {"reply": reply, "images": urls, "trace": trace, "version": entry.version}
+
     # -- state -------------------------------------------------------------
     @router.get("/{sid}/state")
     def get_state(sid: str):

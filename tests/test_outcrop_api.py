@@ -314,3 +314,90 @@ def test_plot_png_each_display(client, interpreted, store):
 
 def test_plot_requires_section(client, interpreted):
     assert client.get(f"/sessions/{interpreted}/plot.png").status_code == 400
+
+
+# ---- chat on the same session ---------------------------------------------
+
+class _FakeFunc:
+    def __init__(self, name, arguments):
+        self.name = name
+        self.arguments = arguments
+
+
+class _FakeToolCall:
+    def __init__(self, name, arguments, call_id="call_1"):
+        self.id = call_id
+        self.function = _FakeFunc(name, arguments)
+
+
+class _ScriptedLLM:
+    """No get_simple_completion → keyword fallback routes 'make/build ...' to tools."""
+    def __init__(self, responses):
+        self._responses = list(responses)
+
+    def get_completion(self, *a, **k):
+        return self._responses.pop(0)
+
+
+def test_chat_edits_shared_context_and_bumps_version(store, upload_dir, outcrop_image, fake_vision):
+    from core.tool_manager import ToolManager
+    llm = _ScriptedLLM([
+        {"content": "", "usage": None,
+         "tool_calls": [_FakeToolCall("outcrop_to_model",
+                                      '{"overrides": {"sand": {"fluid": "gas"}}, "num_traces": 11}')]},
+        {"content": "<reply>sand is now gas-filled</reply>", "tool_calls": None, "usage": None},
+    ])
+    base = SeismicChatBotToolUse(llm_client=llm, tool_manager=ToolManager(), knowledge_base=object())
+    store = SessionStore(base, ttl_seconds=100, max_sessions=3, upload_dir=upload_dir)
+    app = FastAPI()
+    install_error_handlers(app)
+    app.include_router(build_router(store, _no_auth, upload_dir))
+    c = TestClient(app)
+    sid = c.post("/sessions").json()["session_id"]
+    _upload(c, sid, outcrop_image)
+    c.post(f"/sessions/{sid}/interpret")
+    c.post(f"/sessions/{sid}/model", json={"num_traces": 11, "height_m": 20})
+    before = store.get(sid).bot.context_manager.get_context("last_earth_model")
+    v_before = c.get(f"/sessions/{sid}/state").json()["version"]
+
+    r = c.post(f"/sessions/{sid}/chat", json={"message": "make the sand gas-bearing"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["reply"] == "sand is now gas-filled"
+    assert body["version"] == v_before + 1
+    assert body["trace"]["tools_used"] == ["outcrop_to_model"]
+    after = store.get(sid).bot.context_manager.get_context("last_earth_model")
+    assert after is not before
+    # gas lowers Vp inside the sandstone region (facies id 1) relative to the water case
+    mask = after["facies"] == 1
+    assert mask.any()
+    assert after["vp"][mask].mean() < before["vp"][mask].mean()
+    state = c.get(f"/sessions/{sid}/state").json()
+    assert state["version"] == body["version"] and state["model_summary"]["nx"] == 11
+
+
+def test_chat_images_are_served_via_files_route(store, upload_dir, monkeypatch):
+    from core.tool_manager import ToolManager
+    llm = _ScriptedLLM([
+        {"content": "", "usage": None,
+         "tool_calls": [_FakeToolCall("make_ricker", '{"frequency": 30}')]},
+        {"content": "<reply>here</reply>", "tool_calls": None, "usage": None},
+    ])
+    base = SeismicChatBotToolUse(llm_client=llm, tool_manager=ToolManager(), knowledge_base=object())
+    store = SessionStore(base, ttl_seconds=100, max_sessions=3, upload_dir=upload_dir)
+    app = FastAPI()
+    install_error_handlers(app)
+    app.include_router(build_router(store, _no_auth, upload_dir))
+    c = TestClient(app)
+    sid = c.post("/sessions").json()["session_id"]
+    r = c.post(f"/sessions/{sid}/chat", json={"message": "make a 30 Hz ricker wavelet"})
+    body = r.json()
+    assert len(body["images"]) == 1 and body["images"][0].startswith(f"/sessions/{sid}/files/")
+    img = c.get(body["images"][0])
+    assert img.status_code == 200 and img.content[:4] == b"\x89PNG"
+    assert body["version"] == 0                     # wavelet is not an outcrop key
+    c.delete(f"/sessions/{sid}")
+
+
+def test_chat_rejects_empty_message(client, sid):
+    assert client.post(f"/sessions/{sid}/chat", json={"message": "  "}).status_code == 400
