@@ -241,3 +241,76 @@ def test_put_interpretation_ignores_client_supplied_image_path(client, sid, stor
     stored = store.get(sid).bot.context_manager.get_context("last_outcrop")
     assert stored.get("image_path") is None
     assert stored.get("image_size") is None
+
+
+# ---- model + section + plot -------------------------------------------------
+
+@pytest.fixture
+def interpreted(client, sid, outcrop_image, fake_vision):
+    _upload(client, sid, outcrop_image)
+    assert client.post(f"/sessions/{sid}/interpret").status_code == 200
+    return sid
+
+
+def test_model_requires_interpretation(client, sid, outcrop_image):
+    _upload(client, sid, outcrop_image)
+    r = client.post(f"/sessions/{sid}/model", json={})
+    assert r.status_code == 400
+
+
+def test_model_returns_summary_without_grids(client, interpreted, store):
+    sid = interpreted
+    r = client.post(f"/sessions/{sid}/model", json={"num_traces": 21, "height_m": 25})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    m = body["model"]
+    assert m["height_m"] == 25 and m["nx"] == 21 and m["width_m"] == 50.0
+    assert "facies" not in m and "vp" not in m
+    assert m["legend"]["1"]["lithology"] == "sandstone"
+    assert body["version"] == 2
+    assert store.get(sid).bot.context_manager.get_context("last_earth_model")["nx"] == 21
+
+
+def test_section_matches_direct_tool_call(client, interpreted, store):
+    from tools.section_tools import synthetic_section_from_model
+    sid = interpreted
+    client.post(f"/sessions/{sid}/model", json={"num_traces": 11, "height_m": 20})
+    r = client.post(f"/sessions/{sid}/section", json={"wavelet_freq": 40, "domain": "time"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    model = store.get(sid).bot.context_manager.get_context("last_earth_model")
+    z, sec, params = synthetic_section_from_model(model, wavelet_freq=40, domain="depth")
+    assert body["domain"] == "depth"                      # client 'time' ignored
+    assert len(body["traces"]) == 11 and len(body["traces"][0]) == len(z)
+    np.testing.assert_allclose(np.array(body["traces"]).T, sec, rtol=2e-3, atol=1e-6 * params["max_abs_amplitude"] + 1e-12)
+    np.testing.assert_allclose(body["z"], z, rtol=2e-3)
+    assert body["image_top_m"] == model["image_top_m"] and body["height_m"] == 20
+    assert body["max_abs_amplitude"] == pytest.approx(params["max_abs_amplitude"], rel=2e-3)
+    assert body["version"] == 3
+    state = client.get(f"/sessions/{sid}/state").json()
+    assert state["model_summary"]["nx"] == 11
+    assert "traces" not in state["section_meta"] and state["section_meta"]["nx"] == 11
+
+
+def test_section_requires_model(client, interpreted):
+    r = client.post(f"/sessions/{interpreted}/section", json={})
+    assert r.status_code == 400
+
+
+def test_plot_png_each_display(client, interpreted, store):
+    sid = interpreted
+    client.post(f"/sessions/{sid}/model", json={"num_traces": 11, "height_m": 20})
+    client.post(f"/sessions/{sid}/section", json={})
+    for display in ("overlay", "image", "wiggle", "both", "overlay_image"):
+        r = client.get(f"/sessions/{sid}/plot.png", params={"display": display})
+        assert r.status_code == 200, (display, r.text)
+        assert r.headers["content-type"] == "image/png" and r.content[:8] == b"\x89PNG\r\n\x1a\n"
+    assert client.get(f"/sessions/{sid}/plot.png", params={"display": "nope"}).status_code == 400
+    plots = list(store.get(sid).plot_files)
+    assert plots                                        # registered for cleanup
+    assert client.delete(f"/sessions/{sid}").status_code == 204
+    assert not any(os.path.exists(p) for p in plots)   # swept with the session
+
+
+def test_plot_requires_section(client, interpreted):
+    assert client.get(f"/sessions/{interpreted}/plot.png").status_code == 400

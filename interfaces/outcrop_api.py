@@ -11,7 +11,7 @@ import tempfile
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, Iterator, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 
 from interfaces.serialize import (interpretation_caps, model_summary, section_payload,
@@ -20,6 +20,7 @@ from interfaces.sessions import (SessionBusy, SessionEntry, SessionLimit,
                                  SessionNotFound, SessionStore)
 from tools.image_safety import MIME_BY_EXTENSION, image_size, stage_upload
 from tools.outcrop_tools import validate_interpretation
+from tools.section_tools import plot_seismic_section
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +186,54 @@ def build_router(store: SessionStore, auth_dependency: Callable, upload_dir: str
         return {"interpretation": _interp_public(normalized), "warnings": [],
                 "version": entry.version}
 
+    # -- model + section + plot ---------------------------------------------
+    _MODEL_KEYS = ("height_m", "overrides", "background_lithology", "num_traces",
+                  "wavelet_freq", "pad_m")
+    _SECTION_KEYS = ("wavelet_freq", "wv_type", "ormsby_freq", "phase_rot", "angle",
+                     "method", "dt", "pad_time")
+    _DISPLAYS = ("overlay", "image", "wiggle", "both", "overlay_image")
+
+    @router.post("/{sid}/model")
+    def build_model(sid: str, body: Dict[str, Any] = Body(default={})):
+        args = {k: body[k] for k in _MODEL_KEYS if k in body and body[k] is not None}
+        with session(sid) as entry:
+            result, warnings = _run_tool(entry, "outcrop_to_model", args)
+        entry = store.get(sid)
+        return {"model": model_summary(result), "warnings": warnings, "version": entry.version}
+
+    @router.post("/{sid}/section")
+    def build_section(sid: str, body: Dict[str, Any] = Body(default={})):
+        args = {k: body[k] for k in _SECTION_KEYS if k in body and body[k] is not None}
+        args["domain"] = "depth"
+        args["display"] = "overlay"
+        with session(sid) as entry:
+            _, warnings = _run_tool(entry, "synthetic_section", args)
+            cm = entry.bot.context_manager
+            payload = section_payload(cm.get_context("last_section"),
+                                      cm.get_context("last_earth_model"))
+        entry = store.get(sid)
+        payload.update({"warnings": warnings, "version": entry.version})
+        return payload
+
+    @router.get("/{sid}/plot.png")
+    def plot_png(sid: str, display: str = Query(default="overlay")):
+        if display not in _DISPLAYS:
+            raise _http(400, f"display must be one of {list(_DISPLAYS)}")
+        with session(sid) as entry:
+            cm = entry.bot.context_manager
+            last = cm.get_context("last_section")
+            if not last:
+                raise _http(400, "Build a section first (POST /section).")
+            try:
+                path = plot_seismic_section(last["section"], last["parameters"],
+                                            axis=last.get("axis"),
+                                            model=cm.get_context("last_earth_model"),
+                                            display=display)
+            except ValueError as e:
+                raise _http(400, str(e))
+            store.register_file(entry, path)
+            return FileResponse(path, media_type="image/png")
+
     # -- state -------------------------------------------------------------
     @router.get("/{sid}/state")
     def get_state(sid: str):
@@ -193,11 +242,17 @@ def build_router(store: SessionStore, auth_dependency: Callable, upload_dir: str
 
     def _state(entry: SessionEntry, sid: str) -> Dict[str, Any]:
         cm = entry.bot.context_manager
+        model = cm.get_context("last_earth_model")
+        last = cm.get_context("last_section")
+        meta = None
+        if last:
+            meta = section_payload(last, model)
+            meta.pop("traces", None)
         return {"version": entry.version,
                 "image": _image_info(entry, sid),
                 "interpretation": _interp_public(cm.get_context("last_outcrop")),
-                "model_summary": None,
-                "section_meta": None}
+                "model_summary": model_summary(model) if isinstance(model, dict) else None,
+                "section_meta": meta}
 
     router.state_builder = _state   # used by later routes to return state with results
     return router
