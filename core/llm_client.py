@@ -1,7 +1,9 @@
 import logging
+import time
 from typing import Dict, Any, List, Optional
 from openai import OpenAI
 from config.settings import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DATABRICKS_TOKEN, DATABRICKS_BASE_URL, LLM_MODEL, LLM_TEMPERATURE, LLM_MAX_TOKENS
+from core.turn_trace import emit_event, usage_dict
 
 logger = logging.getLogger(__name__)
 
@@ -74,8 +76,10 @@ class LLMClient:
             # Only add tools if they are provided and not None
             if tools:
                 api_params["tools"] = tools
-            
+
+            start = time.perf_counter()
             response = self.client.chat.completions.create(**api_params)
+            latency_ms = round((time.perf_counter() - start) * 1000, 1)
             
             # Safety check: ensure we have a valid response
             if not response.choices:
@@ -89,7 +93,9 @@ class LLMClient:
                 "content": message.content or "",  # Ensure content is never None
                 "tool_calls": getattr(message, "tool_calls", None),
                 "stop_reason": getattr(message, "finish_reason", None),
-                "usage": getattr(response, "usage", None)
+                "usage": getattr(response, "usage", None),
+                "model": self.model,
+                "latency_ms": latency_ms
             }
             return result
             
@@ -97,17 +103,18 @@ class LLMClient:
             logger.error(f"LLM API call failed: {e}")
             raise
 
-    def get_simple_completion(self, system_prompt: str, user_prompt: str) -> str:
-        """
-        Get a simple completion without tool support (backward compatibility).
-        
-        Args:
-            system_prompt: The system prompt to guide the LLM's behavior
-            user_prompt: The user's input to process
-            
-        Returns:
-            str: The LLM's response
-        """
+    def get_simple_completion(self, system_prompt: str, user_prompt: str,
+                              context_manager=None) -> str:
+        """Text-only completion. When a context_manager is supplied, its token
+        counter and decision trace are updated — this is how KnowledgeRouter
+        calls (intent classification, no-RAG fallback) become accountable."""
         response = self.get_completion(system_prompt, user_prompt)
+        if context_manager is not None:
+            if response.get("usage"):
+                context_manager.update_token_usage(response["usage"])
+            emit_event(context_manager, "llm",
+                       model=response.get("model"),
+                       latency_ms=response.get("latency_ms"),
+                       **usage_dict(response.get("usage")))
         content = response.get("content", "")
         return content.strip() if content else ""

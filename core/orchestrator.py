@@ -14,6 +14,7 @@ from core.context_manager import ContextManager
 from core.tool_registry import REGISTRY_BY_NAME
 from core.tool_loop import extract_reply
 from core.tool_index import ToolIndex
+from core.turn_trace import emit_event, usage_dict
 from core.executor_agent import ExecutorAgent
 from core.knowledge_router import KnowledgeRouter
 from knowledge.knowledge_base import KnowledgeBase
@@ -81,7 +82,8 @@ class SeismicOrchestrator:
         self.tool_index = tool_index or ToolIndex()
         self.context_manager = ContextManager()  # per-session, never shared
         self.session_id = uuid.uuid4().hex
-        self._knowledge_router = KnowledgeRouter(self.llm_client, self.knowledge_base)
+        self.context_manager.trace.session_id = self.session_id
+        self._knowledge_router = KnowledgeRouter(self.llm_client, self.knowledge_base, self.context_manager)
 
     def new_session(self) -> "SeismicOrchestrator":
         return SeismicOrchestrator(llm_client=self.llm_client,
@@ -99,6 +101,8 @@ class SeismicOrchestrator:
         return ORCHESTRATOR_SYSTEM_PROMPT.format(context_line=line)
 
     def process_single_input(self, user_input: str) -> Dict[str, Any]:
+        trace = self.context_manager.trace
+        trace.begin_turn(user_input)
         try:
             if self._knowledge_router.is_knowledge_question(user_input):
                 reply = self._knowledge_router.handle_knowledge_question(user_input)
@@ -112,10 +116,12 @@ class SeismicOrchestrator:
                 reply = "I didn't get a response. Please try again."
             if not reply and images:
                 reply = "Here are the results."
-            return {"reply": reply, "images": images}
+            return {"reply": reply, "images": images, "trace": trace.end_turn()}
         except Exception as e:
-            logger.error(f"Error processing input: {e}")
-            return {"reply": f"I encountered an error: {str(e)}", "images": []}
+            logger.error(f"Error processing input: {e}", exc_info=True)
+            trace.emit("turn_error", error=str(e))
+            return {"reply": f"I encountered an error: {str(e)}", "images": [],
+                    "trace": trace.end_turn()}
 
     def _run_meta_loop(self, user_input: str) -> Dict[str, Any]:
         messages = [{"role": "user", "content": user_input}]
@@ -126,6 +132,11 @@ class SeismicOrchestrator:
                 tools=META_TOOLS, messages=messages)
             if response.get("usage"):
                 self.context_manager.update_token_usage(response["usage"])
+            emit_event(self.context_manager, "llm",
+                       model=response.get("model"),
+                       latency_ms=response.get("latency_ms"),
+                       tool_call=bool(response.get("tool_calls")),
+                       **usage_dict(response.get("usage")))
             if not response.get("tool_calls"):
                 messages.append({"role": "assistant", "content": response["content"]})
                 reply = extract_reply(response["content"]) or response["content"]
@@ -136,11 +147,19 @@ class SeismicOrchestrator:
             content = self._dispatch_meta(tool_call, images)
             messages.append({"role": "tool", "tool_call_id": tool_call.id,
                              "content": content})
+        logger.warning(f"Orchestrator round budget ({MAX_ORCH_ROUNDS}) exhausted; "
+                       f"forcing tool-free completion")
+        emit_event(self.context_manager, "budget_exhausted", rounds=MAX_ORCH_ROUNDS)
         final_response = self.llm_client.get_completion(
             system_prompt=self._system_prompt(), user_prompt="",
             tools=None, messages=messages)
         if final_response.get("usage"):
             self.context_manager.update_token_usage(final_response["usage"])
+        emit_event(self.context_manager, "llm",
+                   model=final_response.get("model"),
+                   latency_ms=final_response.get("latency_ms"),
+                   tool_call=bool(final_response.get("tool_calls")),
+                   **usage_dict(final_response.get("usage")))
         reply = extract_reply(final_response["content"]) or final_response["content"]
         return {"reply": reply, "images": images}
 
@@ -163,6 +182,10 @@ class SeismicOrchestrator:
 
     def _discover(self, task_description: str) -> str:
         cards = self.tool_index.search(task_description)
+        hits = [[c.name, round(c.score, 4)] for c in cards]
+        logger.info(f"discover_tools({task_description!r}) -> {hits}")
+        emit_event(self.context_manager, "discover",
+                   query=task_description[:200], hits=hits)
         if not cards:
             return "No tools matched; rephrase the task or answer directly."
         return "Matching tools:\n" + "\n".join(f"- {c.card}" for c in cards)
@@ -176,6 +199,9 @@ class SeismicOrchestrator:
                     f"Use names exactly as returned by discover_tools.")
         executor = ExecutorAgent(self.llm_client, self.tool_manager, self.context_manager)
         result = executor.run(brief, tool_names)
+        emit_event(self.context_manager, "run_task", brief=brief[:200],
+                   tool_names=list(tool_names), tools_used=result.tools_used,
+                   error=result.error, n_images=len(result.images))
         for p in result.images:
             if p not in images:
                 images.append(p)

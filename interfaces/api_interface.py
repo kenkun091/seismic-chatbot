@@ -1,12 +1,18 @@
 import os
 import time
+import logging
 
 from fastapi import FastAPI, HTTPException, Header, Request, Depends
 from pydantic import BaseModel
 from typing import List, Optional
 from core.chatbot_tool_use import SeismicChatBotToolUse
 from config.example_prompts import EXAMPLE_PROMPTS, search_prompts, get_random_prompts, get_prompts_by_category
+from config.settings import LOG_LEVEL, LOG_FORMAT
 from interfaces.security import RateLimiter, check_api_key
+
+# No-op when main.py already configured the root logger; makes direct imports
+# / uvicorn-style launches emit logs instead of silence.
+logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO), format=LOG_FORMAT)
 
 app = FastAPI(title="Seismic ChatBot API", description="API for seismic modeling assistant")
 
@@ -45,6 +51,7 @@ class ChatResponse(BaseModel):
     images: List[str] = []
     success: bool
     error: Optional[str] = None
+    trace: Optional[dict] = None
 
 class ExamplePrompt(BaseModel):
     title: str
@@ -70,6 +77,7 @@ async def chat(request: ChatRequest):
                 response=str(result["reply"]),
                 images=[str(p) for p in result.get("images") or []],
                 success=True,
+                trace=result.get("trace"),
             )
         return ChatResponse(response=str(result), success=True)
     except Exception as e:

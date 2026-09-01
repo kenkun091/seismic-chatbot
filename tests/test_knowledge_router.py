@@ -60,3 +60,68 @@ def test_handle_no_rag_results_appends_disclaimer():
     }))
     out = router.handle_knowledge_question("what is obscure thing")
     assert "Not from the curated knowledge base" in out
+
+
+from core.context_manager import ContextManager
+from core.knowledge_router import KnowledgeRouter
+
+
+def _cm():
+    cm = ContextManager()
+    cm.trace.persist_dir = ""
+    return cm
+
+
+def test_classify_image_shortcut_emits_intent():
+    cm = _cm()
+    router = KnowledgeRouter(None, None, context_manager=cm)
+    verdict = router.classify("[image attached: x.png] interpret this")
+    assert verdict == {"is_knowledge": False, "via": "image_shortcut"}
+    intents = [e for e in cm.trace.events if e["t"] == "intent"]
+    assert intents[0]["verdict"] == "TOOL" and intents[0]["via"] == "image_shortcut"
+
+
+def test_classify_via_llm():
+    class SimpleFake:
+        def get_simple_completion(self, s, u, context_manager=None):
+            return "KNOWLEDGE"
+    cm = _cm()
+    router = KnowledgeRouter(SimpleFake(), None, context_manager=cm)
+    verdict = router.classify("How does frequency affect resolution")
+    assert verdict == {"is_knowledge": True, "via": "llm"}
+
+
+def test_classify_falls_back_to_keywords_and_records_it():
+    class BrokenFake:
+        def get_simple_completion(self, s, u, context_manager=None):
+            raise RuntimeError("down")
+    cm = _cm()
+    router = KnowledgeRouter(BrokenFake(), None, context_manager=cm)
+    verdict = router.classify("what is a ricker wavelet?")
+    assert verdict == {"is_knowledge": True, "via": "keyword_fallback"}
+    intents = [e for e in cm.trace.events if e["t"] == "intent"]
+    assert intents[0]["via"] == "keyword_fallback"
+
+
+def test_classify_tolerates_legacy_two_arg_fake():
+    class LegacyFake:  # old signature without context_manager kwarg
+        def get_simple_completion(self, s, u):
+            return "TOOL"
+    router = KnowledgeRouter(LegacyFake(), None, context_manager=_cm())
+    assert router.classify("make a wedge model") == {"is_knowledge": False, "via": "llm"}
+
+
+def test_handle_knowledge_question_emits_rag_scores():
+    class FakeKB:
+        def query_knowledge(self, q):
+            return {"rag_type": "retrieve_and_generate", "generated_response": "answer",
+                    "total_retrieved": 2,
+                    "retrieved_documents": [{"score": 0.8123}, {"score": 0.5}]}
+    cm = _cm()
+    router = KnowledgeRouter(None, FakeKB(), context_manager=cm)
+    out = router.handle_knowledge_question("what is tuning?")
+    assert "answer" in out
+    rag = [e for e in cm.trace.events if e["t"] == "rag"][0]
+    assert rag["rag_type"] == "retrieve_and_generate"
+    assert rag["retrieved"] == 2
+    assert rag["scores"] == [0.8123, 0.5]

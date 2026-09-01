@@ -204,7 +204,7 @@ class VectorDatabase:
         # Sort by similarity score (highest first)
         processed_results.sort(key=lambda x: x['score'], reverse=True)
         
-        logger.debug(f"Search query '{query}' returned {len(processed_results)} results")
+        logger.info(f"Search query '{query}' returned {len(processed_results)} results")
         return processed_results
     
     def get_collection_info(self) -> Dict[str, Any]:

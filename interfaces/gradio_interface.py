@@ -7,6 +7,13 @@ from config.example_prompts import EXAMPLE_PROMPTS, search_prompts, get_random_p
 from config.settings import SEISMIC_UPLOAD_DIR, MAX_IMAGE_MB
 from tools.image_safety import stage_upload
 
+import logging
+from config.settings import LOG_LEVEL, LOG_FORMAT
+
+# No-op when main.py already configured the root logger; makes direct imports
+# / uvicorn-style launches emit logs instead of silence.
+logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO), format=LOG_FORMAT)
+
 
 def append_bot_response(chat_history, response):
     """Append a bot response to Gradio 3.x pair-format chat history.
@@ -26,6 +33,17 @@ def append_bot_response(chat_history, response):
     else:
         chat_history[-1][1] = str(response)
     return chat_history
+
+
+def format_status(token_usage, trace=None):
+    """One-line session status: token totals plus the turn's tool chain."""
+    status = (f"Prompt: {token_usage['prompt_tokens']} | "
+              f"Completion: {token_usage['completion_tokens']} | "
+              f"Total: {token_usage['total_tokens']}")
+    tools = (trace or {}).get("tools_used") or []
+    if tools:
+        status += " | Tools: " + " → ".join(tools)
+    return status
 
 
 DEFAULT_IMAGE_REQUEST = "Interpret this outcrop photo."
@@ -76,12 +94,14 @@ def create_chat_interface(base_bot=None):
 
             # Per-session token usage for display
             token_usage = session_bot.context_manager.get_token_usage()
-            token_str = f"Prompt: {token_usage['prompt_tokens']} | Completion: {token_usage['completion_tokens']} | Total: {token_usage['total_tokens']}"
+            trace = response.get("trace") if isinstance(response, dict) else None
+            token_str = format_status(token_usage, trace)
             return "", None, chat_history, token_str, session_bot
 
         except Exception as e:
             chat_history[-1][1] = f"Error processing request: {str(e)}"
-            return "", None, chat_history, "", session_bot
+            token_str = format_status(session_bot.context_manager.get_token_usage())
+            return "", None, chat_history, token_str, session_bot
     
     def copy_prompt(prompt_text):
         """Copy prompt to clipboard and return it for the textbox."""

@@ -2,33 +2,45 @@
 import json
 import logging
 
+from core.turn_trace import emit_event
+
 logger = logging.getLogger(__name__)
 
 
 class KnowledgeRouter:
-    def __init__(self, llm_client, knowledge_base):
+    def __init__(self, llm_client, knowledge_base, context_manager=None):
         self.llm_client = llm_client
         self.knowledge_base = knowledge_base
+        self.context_manager = context_manager
+
+    def _simple(self, system_prompt: str, user_prompt: str) -> str:
+        """get_simple_completion with token/trace accounting; tolerates legacy
+        fakes whose signature lacks the context_manager kwarg."""
+        try:
+            return self.llm_client.get_simple_completion(
+                system_prompt, user_prompt, context_manager=self.context_manager)
+        except TypeError:
+            return self.llm_client.get_simple_completion(system_prompt, user_prompt)
+
+    def classify(self, user_input: str) -> dict:
+        """Three-way intent decision with provenance: which branch decided."""
+        if user_input.lstrip().startswith("[image attached"):
+            verdict = {"is_knowledge": False, "via": "image_shortcut"}
+        else:
+            try:
+                verdict = {"is_knowledge": self._classify_intent_with_llm(user_input),
+                           "via": "llm"}
+            except Exception as e:
+                logger.error(f"LLM intent classification failed: {e}")
+                verdict = {"is_knowledge": self._is_knowledge_question_keywords(user_input),
+                           "via": "keyword_fallback"}
+        label = "KNOWLEDGE" if verdict["is_knowledge"] else "TOOL"
+        logger.info(f"intent: {label} (via {verdict['via']})")
+        emit_event(self.context_manager, "intent", verdict=label, via=verdict["via"])
+        return verdict
 
     def is_knowledge_question(self, user_input: str) -> bool:
-        """
-        Determine if the user input is a knowledge question using LLM-based intent classification.
-
-        Args:
-            user_input: The user's input text
-
-        Returns:
-            bool: True if this should use RAG
-        """
-        if user_input.lstrip().startswith("[image attached"):
-            return False  # an uploaded photo is always a tool request
-        try:
-            # Use LLM for intent classification
-            return self._classify_intent_with_llm(user_input)
-        except Exception as e:
-            logger.error(f"LLM intent classification failed: {e}")
-            # Fallback to keyword-based detection
-            return self._is_knowledge_question_keywords(user_input)
+        return self.classify(user_input)["is_knowledge"]
 
     def _classify_intent_with_llm(self, user_input: str) -> bool:
         """
@@ -70,7 +82,7 @@ Examples:
 Respond with ONLY "KNOWLEDGE" or "TOOL" - no other text."""
 
         try:
-            response = self.llm_client.get_simple_completion(system_prompt, user_input)
+            response = self._simple(system_prompt, user_input)
             response = response.strip().upper()
 
             # Log the classification for debugging
@@ -210,6 +222,13 @@ Respond in JSON format:
             # Use the knowledge base's RAG system
             rag_response = self.knowledge_base.query_knowledge(user_input)
 
+            docs = rag_response.get('retrieved_documents') or []
+            emit_event(self.context_manager, "rag",
+                       rag_type=rag_response.get('rag_type'),
+                       retrieved=rag_response.get('total_retrieved', 0),
+                       scores=[round(d.get('score', 0.0), 4) for d in docs
+                               if isinstance(d, dict)])
+
             if rag_response.get('rag_type') == 'retrieve_and_generate':
                 # Successfully generated response
                 response = rag_response['generated_response']
@@ -302,7 +321,7 @@ Answer the user's question using your general knowledge of seismic modeling and 
 within the constraints above."""
 
             # Generate response using the LLM
-            response = self.llm_client.get_simple_completion(system_prompt, user_input)
+            response = self._simple(system_prompt, user_input)
 
             # Clearly label the answer as NOT grounded in the curated knowledge base.
             disclaimer = (

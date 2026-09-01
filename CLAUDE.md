@@ -252,6 +252,26 @@ Tools: `tools/{ricker,wedge,avo,rock_physics}_tools.py` plus `rag_tools.py`, `pa
 
 An alternative request-flow, run with `python main.py --mode agentic`, swaps the classic loop above for `core/orchestrator.py::SeismicOrchestrator` — an LLM loop that never sees real tool schemas, only two meta-tools (`discover_tools`, `run_task`): `discover_tools` does semantic search over the registry via `core/tool_index.py` (a `ToolIndex` backed by its own regenerable, self-cleaning ChromaDB collection, `tool_index`, separate from the RAG `seismic_knowledge` collection), and `run_task` delegates one self-contained task to a scoped `core/executor_agent.py::ExecutorAgent`, which runs the real tool-calling loop against just the tools it was handed and returns a `TaskResult`. The orchestrator and the classic `SeismicChatBotToolUse` now share their bounded tool-calling loop (`core/tool_loop.py`) and intent-split/RAG dispatch (`core/knowledge_router.py`), extracted so both modes stay in sync. `SeismicOrchestrator` matches `SeismicChatBotToolUse`'s public surface (`new_session`/`process_single_input`/`attach_image`/`session_id`), so `interfaces/gradio_interface.py::create_chat_interface(base_bot=...)` can host either. The classic tool-use loop (`--mode tool-use`) remains the default. Design/rationale: `docs/superpowers/specs/2026-08-29-orchestrator-subagent-workflow-design.md`.
 
+## Decision trace (agent observability, Tier 0+1)
+
+Every turn in both modes is traced by `core/turn_trace.py::TraceRecorder`, hanging off the
+per-session `ContextManager` (`.trace`). Events record decisions, never content: `intent`
+(verdict + via llm/keyword_fallback/image_shortcut), `rag` (per-doc scores), `discover`
+(tool-index hits with cosine scores), `run_task` (undegraded TaskResult), `tool_call`
+(ok/ms + arg provenance as *names*: `injected`/`overridden`/`defaults_filled`),
+`parallel_calls_dropped`, `auto_plot` (fired or not), `llm` (model/latency/tokens per call),
+`budget_exhausted`, `turn_error`. `process_single_input` returns the turn record as an
+additive `"trace"` key (`{"reply", "images", "trace"}`); the API exposes it as
+`ChatResponse.trace` and the Gradio status line shows the tool chain. Records are appended
+per session to `SEISMIC_TRACE_DIR/<session_id>.jsonl` (default `<tmpdir>/seismic_traces`;
+`SEISMIC_TRACE_DIR=off` disables persistence; write failures are swallowed). `LOG_LEVEL` is env-overridable now; interfaces call
+`basicConfig` themselves. `LLMClient.get_simple_completion(..., context_manager=)` accounts
+router-side tokens — but `knowledge/rag_system.py` still builds its own `LLMClient`, so RAG
+*generation* tokens remain untracked (known gap, Tier 2). Tests: `tests/test_turn_trace.py`,
+`test_tool_loop_trace.py`, `test_orchestrator_trace.py`, `test_chatbot_trace.py`,
+`test_trace_surfaces.py`. When adding a decision point, emit an event via
+`core.turn_trace.emit_event(context_manager, ...)` — don't invent a parallel channel.
+
 ## Tests
 
 Real pytest suite under `tests/` (the loose `test_*.py` at the package root are standalone scripts, not the suite).
