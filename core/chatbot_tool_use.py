@@ -127,6 +127,9 @@ Available tools:
 - outcrop_to_model: Builds a 2-D elastic earth model from the latest outcrop interpretation on a shale background; takes height_m (overrides the photo's scale; required if none was found) and per-region overrides (lithology / fluid / porosity / vclay keyed by region id or label). Re-run it for corrections — no vision call needed.
 - synthetic_section: Convolves the latest 2-D earth model into a synthetic seismic section (wavelet frequency, angle, Shuey/Zoeppritz, time or depth domain) and plots it as an image, wiggle, or both.
 - outcrop_to_seismic: One-shot photo → interpretation → 2-D model → seismic section (with both plots). Use when the user uploads a photo and asks directly for the seismic image; use the staged tools when they want to check or correct the interpretation first.
+- run_skill: Run a saved reusable skill by name with parameter values (replays its recorded tool chain, or follows its procedure); skills are listed by list_skills
+- save_skill: Save the previous turn's tool calls as a reusable parameterized skill — use when the user asks to save/remember/reuse what was just done, mapping each parameter name to the value used
+- list_skills: List saved reusable skills and their parameters
 
 Guidelines:
 1. Be helpful and concise in your responses
@@ -275,6 +278,7 @@ Place all user-facing conversational responses in <reply></reply> XML tags to ma
         """
         trace = self.context_manager.trace
         trace.begin_turn(user_input)
+        self.context_manager.begin_turn_recording(user_input)
         try:
             # Check if this is a knowledge question that should use RAG
             if self._is_knowledge_question(user_input):

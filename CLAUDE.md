@@ -310,6 +310,38 @@ known limitations). Tests:
 `tests/test_trace_summary.py`, `test_physics_warning_capture.py`,
 `test_run_task_events.py`, `test_provenance.py`, `test_gradio_trace_panel.py`.
 
+## Reusable skills (Tier 4)
+
+A **skill** is a YAML file (`name`, `description`, `parameters` JSON-schema-ish with optional
+`default`s, `tools` scope, `procedure` brief template with `{{slot}}`s, optional `chain` of
+recorded `{tool, args}` steps) loaded by `core/skills.py::SkillRegistry` from two layers —
+curated `skills/*.yaml` in the repo and captured skills in `SEISMIC_SKILLS_DIR` (default
+`<tmpdir>/seismic_skills`, 0o700; runtime overrides repo on a name clash with a WARNING).
+Skills are data: validated against `REGISTRY_BY_NAME`, no code, value-only slot substitution.
+Three session-scoped registry tools (they receive a hidden `_session` `SessionHandle` injected
+by `ToolLoopRunner.inject_context_inputs`; `ToolSpec.session_scoped=True`): `run_skill(name,
+params, mode)` — `auto` replays the chain when present (each step through
+`ToolLoopRunner.execute_call`, the same per-call path as a live turn: validators, guards,
+sandboxes, events, sidecars with a `skill` key, auto-plots; no LLM) else runs the filled
+procedure through a scoped `ExecutorAgent`; `save_skill(name, description, parameters,
+overwrite)` captures the PREVIOUS turn's calls (`ContextManager.begin_turn_recording`
+rotates `current_turn_calls`/`last_turn_calls` — argument VALUES kept in memory only, never
+persisted) and parameterizes by explicit value matching (a parameter matching no argument is
+an error; context-fed and non-scalar args are dropped); `list_skills()`. Saving a name that
+already exists in either layer (repo or runtime) requires `overwrite=true`. Session-scoped
+tools are never recorded and are rejected inside skills. The FastAPI `/chat` route builds a
+fresh session per request, so `save_skill` cannot see a previous turn there (Gradio and the
+classic/agentic chat loops can). Discovery: skills
+render as `skill:<name>` cards via `ToolIndex.refresh(registry.specs())` so agentic-mode
+`discover_tools` returns them; the orchestrator prompt explains invoking them via `run_skill`.
+Gradio has a "Skills" accordion with a save-last-turn form (uses the most recent completed
+turn directly, no LLM). Recursion is blocked (`_skill_depth`); a failed replay step stops the
+chain and returns `error`. Built-in example: `skills/ricker_wavelet.yaml`. Tests:
+`tests/test_execute_call.py`, `test_skills_model.py`, `test_session_scoped.py`,
+`test_skill_execution.py`, `test_gradio_skills.py`, `test_skills_e2e.py`. Out of scope for
+now: evals over recorded traces, LLM-assisted slot inference, `run_sweep` over skills,
+versioning.
+
 ## Tests
 
 Real pytest suite under `tests/` (the loose `test_*.py` at the package root are standalone scripts, not the suite).

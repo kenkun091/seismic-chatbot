@@ -22,6 +22,8 @@ GENERATOR = "seismic-chatbot"
 def write_plot_provenance(image_path: str, payload: Dict[str, Any]) -> Optional[str]:
     """Write <image_path>.prov.json; returns the sidecar path, or None on failure."""
     sidecar = f"{image_path}.prov.json"
+    if os.path.exists(sidecar):
+        return sidecar  # first writer wins (plots are unique mkstemp paths)
     record: Dict[str, Any] = {
         "artifact": os.path.basename(image_path),
         "generator": GENERATOR,

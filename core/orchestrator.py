@@ -24,6 +24,10 @@ logger = logging.getLogger(__name__)
 MAX_ORCH_ROUNDS = 8
 META_TOOL_NAMES = ("discover_tools", "run_task")
 
+# Session bookkeeping the LLM must never see as "context it can rely on".
+_INTERNAL_CONTEXT_KEYS = frozenset({"current_turn_calls", "current_turn_input",
+                                    "last_turn_calls", "last_turn_input"})
+
 META_TOOLS = [
     {"type": "function", "function": {
         "name": "discover_tools",
@@ -64,6 +68,10 @@ Rules:
 - After an interpret_outcrop task, report the regions and the scale estimate WITH its
   confidence, and ask the user to confirm the height before building the model if
   confidence is low or no scale was found.
+- discover_tools may return 'skill:<name>' cards: these are saved reusable flows. Run one by
+  delegating a task whose tool_names include run_skill and whose brief says to call
+  run_skill with that name and the parameter values. To save the previous turn's work as a
+  skill, delegate to save_skill.
 - Any plot an executor produces is displayed to the user automatically — never mention
   image file paths.
 - In your final answer, state the key quantitative results (tuning thickness, AVO class,
@@ -80,6 +88,12 @@ class SeismicOrchestrator:
         self.tool_manager = tool_manager or ToolManager()
         self.knowledge_base = knowledge_base or KnowledgeBase(llm_client=self.llm_client)
         self.tool_index = tool_index or ToolIndex()
+        if tool_index is None:  # injected fakes need not support refresh
+            from core.skills import get_registry
+            try:
+                self.tool_index.refresh(get_registry().specs())
+            except Exception as e:
+                logger.warning(f"skill discovery refresh failed: {e}")
         self.context_manager = ContextManager()  # per-session, never shared
         self.session_id = uuid.uuid4().hex
         self.context_manager.trace.session_id = self.session_id
@@ -95,7 +109,8 @@ class SeismicOrchestrator:
         self.context_manager.set_context("last_image", path)
 
     def _system_prompt(self) -> str:
-        keys = sorted(self.context_manager.conversation_context.keys())
+        keys = sorted(k for k in self.context_manager.conversation_context
+                      if not k.startswith("_") and k not in _INTERNAL_CONTEXT_KEYS)
         line = f"Session context currently holds: {', '.join(keys)}." if keys \
             else "Session context is empty (fresh conversation)."
         return ORCHESTRATOR_SYSTEM_PROMPT.format(context_line=line)
@@ -103,6 +118,7 @@ class SeismicOrchestrator:
     def process_single_input(self, user_input: str) -> Dict[str, Any]:
         trace = self.context_manager.trace
         trace.begin_turn(user_input)
+        self.context_manager.begin_turn_recording(user_input)
         try:
             if self._knowledge_router.is_knowledge_question(user_input):
                 reply = self._knowledge_router.handle_knowledge_question(user_input)
@@ -204,6 +220,7 @@ class SeismicOrchestrator:
             return (f"Unknown tool name(s): {', '.join(unknown)}. "
                     f"Use names exactly as returned by discover_tools.")
         executor = ExecutorAgent(self.llm_client, self.tool_manager, self.context_manager)
+        executor._loop.tool_index = self.tool_index
         result = executor.run(brief, tool_names)
         emit_event(self.context_manager, "run_task", brief=brief[:200],
                    tool_names=list(tool_names), tools_used=result.tools_used,

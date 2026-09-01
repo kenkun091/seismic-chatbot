@@ -1,0 +1,14 @@
+name: ricker_wavelet
+description: Build and plot a Ricker wavelet of a given dominant frequency.
+parameters:
+  frequency:
+    type: number
+    description: Dominant frequency in Hz.
+    default: 30
+tools: [make_ricker]
+procedure: |
+  Create a {{frequency}} Hz Ricker wavelet with make_ricker and report its
+  dominant frequency and time-length; the plot is generated automatically.
+chain:
+  - tool: make_ricker
+    args: {frequency: "{{frequency}}"}

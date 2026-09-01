@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Optional
 
 import chromadb
 from sentence_transformers import SentenceTransformer
@@ -75,6 +76,14 @@ class ToolIndex:
         self.collection.upsert(ids=new_ids, documents=texts,
                                metadatas=metas, embeddings=embeddings)
         logger.info(f"tool_index: embedded {len(new_ids)} cards")
+
+    def refresh(self, extra_specs: Optional[list] = None) -> None:
+        """Re-index REGISTRY plus extra card specs (e.g. skills); stale cards
+        are deleted by _populate, so removed extras disappear too."""
+        specs = list(REGISTRY) + list(extra_specs or [])
+        plot_targets = {s.auto_plot for s in specs if getattr(s, "auto_plot", None)}
+        self._specs = [s for s in specs if s.name not in plot_targets]
+        self._populate()
 
     def search(self, task_description: str, top_k: int = 5,
                threshold: float = 0.2) -> list[ToolCard]:
