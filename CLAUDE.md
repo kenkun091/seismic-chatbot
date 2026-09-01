@@ -53,6 +53,8 @@ pytest tests/test_tools.py::<name> -q          # single test
 | `SEISMIC_EXPORT_DIR` | `<tmpdir>/seismic_exports` | Sandbox dir for `wedge_model`'s `export_path` CSV. The LLM-supplied `export_path` is confined here (`tools/path_safety.py`); **absolute paths and `..` traversal raise `ValueError`** — pass a *relative* name. |
 | `SEISMIC_UPLOAD_DIR` | `<tmpdir>/seismic_uploads` | Sandbox dir for uploaded outcrop photos, staged per-session at `SEISMIC_UPLOAD_DIR/<session_id>/` (`tools/image_safety.py::stage_upload`). Every image-consuming tool re-validates the path stays inside it via `safe_image_path`; absolute paths and `..` traversal raise `ValueError`. |
 | `MAX_IMAGE_MB` | `10` | Max size (MB) accepted for an uploaded outcrop photo (`tools/image_safety.py`). |
+| `SESSION_TTL_SECONDS` | `7200` | Idle lifetime of a `/sessions/{id}` web-client session before its files are swept (`interfaces/sessions.py`). |
+| `MAX_SESSIONS` | `50` | Cap on live web-client sessions; `POST /sessions` returns `503` beyond it. |
 
 **Other**
 | Var | Effect |
@@ -215,6 +217,26 @@ without them `interpret_outcrop` raises at call time and everything else works. 
 `tests/test_image_safety.py`, `test_vision_client.py`, `test_outcrop_*.py`,
 `test_section_*.py`, `test_chatbot_outcrop.py`, `test_gradio_upload.py`; real-VLM smoke:
 `python test_outcrop_vision.py <photo>` (credential-gated, not in the suite).
+
+## Outcrop web app API (session-scoped)
+
+Spec: `docs/superpowers/specs/2026-09-01-outcrop-webapp-design.md`. `interfaces/outcrop_api.py`
+mounts a `/sessions` router into the FastAPI app for the browser/iPad client:
+`POST /sessions` → id; `POST /sessions/{id}/image` (multipart, `image_safety` sandbox);
+`POST .../interpret` (the one VLM hop); `PUT .../interpretation` (client-drawn regions →
+`validate_interpretation` → `last_outcrop`; caps 200 regions / 2000 points / 1 MB → 413);
+`POST .../model`, `POST .../section` (always depth domain; returns `z` + `traces` columns +
+photo extent for the client overlay); `GET .../plot.png?display=`; `POST .../chat` (same
+session context); `GET .../state` (`version` bumps whenever `last_outcrop` /
+`last_earth_model` / `last_section` identity changes); `GET .../files/{name}` serves only
+files registered on that session. Every tool route runs through
+`ToolLoopRunner.execute_call(..., auto_plot=False)`. `interfaces/sessions.py::SessionStore`
+holds one `SeismicChatBotToolUse` session per id with a per-request lock (`409` when busy),
+idle TTL and cap. All routes use the `/chat` key gate. The client bundle (`webapp/dist`,
+built with `npm run build`) is served at `/app` when present. Errors are `{"error": msg}`
+with 400 (tool/validator), 404 (session), 409 (busy), 413 (caps), 503 (no vision creds /
+session cap). Tests: `tests/test_sessions.py`, `test_serialize.py`, `test_outcrop_api.py`,
+`test_api_mount.py`.
 
 ## The tool layer is registry-driven (the important architecture)
 

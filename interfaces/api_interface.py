@@ -47,6 +47,30 @@ def enforce_chat_policy(request: Request, x_api_key: Optional[str] = Header(defa
     if not _chat_rate_limiter.allow(client, now=time.time()):
         raise HTTPException(status_code=429, detail="Rate limit exceeded. Try again shortly.")
 
+
+# --- Session API for the outcrop web client ---------------------------------
+from config.settings import SEISMIC_UPLOAD_DIR, MAX_IMAGE_MB
+from interfaces.outcrop_api import build_router, install_error_handlers
+from interfaces.sessions import SessionStore
+
+session_store = SessionStore(
+    base_chatbot,
+    ttl_seconds=float(os.environ.get("SESSION_TTL_SECONDS", "7200")),
+    max_sessions=int(os.environ.get("MAX_SESSIONS", "50")),
+    upload_dir=SEISMIC_UPLOAD_DIR,
+)
+install_error_handlers(app)
+app.include_router(build_router(session_store, enforce_chat_policy,
+                                SEISMIC_UPLOAD_DIR, MAX_IMAGE_MB))
+
+# Static client bundle (webapp/dist) — mounted only when it has been built.
+WEBAPP_DIST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "webapp", "dist")
+if os.path.isdir(WEBAPP_DIST):
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/app", StaticFiles(directory=WEBAPP_DIST, html=True), name="webapp")
+
+
 class ChatRequest(BaseModel):
     message: str
 
