@@ -360,6 +360,38 @@
                     "title": "Parameter sweep / sensitivity",
                     "prompt": "Sweep the petro_to_avo gradient over sand porosity [0.1, 0.2, 0.3] and fluid [brine, gas], holding the shale and angles [0, 10, 20, 30] fixed",
                     "description": "Run a recipe across a parameter grid and summarize how an output responds"
+                },
+                {
+                    "title": "N-layer synthetic seismogram",
+                    "prompt": "Build a synthetic seismogram for a 4-layer stack: Vp 3000, 2500, 2800, 3200 m/s, density 2.40, 2.20, 2.30, 2.50 g/cc, thicknesses 60, 40 and 30 m, with a 35 Hz Ricker wavelet",
+                    "description": "General N-layer convolutional synthetic — layer model, reflectivity, and trace"
+                },
+                {
+                    "title": "Synthetic from petrophysics",
+                    "prompt": "Build a 3-layer synthetic from petrophysics: shale (porosity 0.10, clay 0.55) over gas sand (porosity 0.25, clay 0.10) over shale (porosity 0.10, clay 0.55), thicknesses 40 and 25 m, fluids brine, gas, brine",
+                    "description": "petro_to_synthetic workflow: Han (1986)/Gassmann layers stacked into a synthetic trace"
+                }
+            ],
+            "Outcrop to Seismic": [
+                {
+                    "title": "Interpret an outcrop photo",
+                    "prompt": "Interpret this outcrop photo: outline the beds and bodies, tell me the lithologies and how tall the exposure looks",
+                    "description": "Upload a photo first — interpret_outcrop returns facies regions, a scale estimate with confidence, and an overlay plot"
+                },
+                {
+                    "title": "Correct the scale and a facies",
+                    "prompt": "The cliff is 35 m high and region 2 is a gas-filled sandstone — rebuild the earth model",
+                    "description": "outcrop_to_model re-runs offline with height_m and per-region overrides (no new vision call)"
+                },
+                {
+                    "title": "Seismic section from the model",
+                    "prompt": "Generate the synthetic seismic section with a 40 Hz Ricker wavelet as wiggle traces in depth",
+                    "description": "synthetic_section convolves the 2-D model; image or wiggle display, time or depth domain"
+                },
+                {
+                    "title": "One-shot photo to seismic",
+                    "prompt": "Turn this outcrop photo straight into a seismic image with a 30 Hz wavelet; the exposure is about 50 m high",
+                    "description": "outcrop_to_seismic workflow: interpretation, 2-D shale-background model and section in one call"
                 }
             ],
             "Agentic Flows": [
@@ -387,6 +419,21 @@
                     "title": "EEI chi → impedance log",
                     "prompt": "Find the EEI rotation angle best correlated with clay volume for porosity log [0.2, 0.25, 0.18, 0.3] and clay log [0.4, 0.2, 0.6, 0.1], then compute the EEI log at that angle",
                     "description": "Chains eei_optimal_chi → extended_elastic_impedance to compute the optimal-angle impedance"
+                },
+                {
+                    "title": "Compare two wavelets (two plots)",
+                    "prompt": "Create both a 25 Hz Ricker wavelet and a 5-10-40-60 Hz Ormsby wavelet, then compare their side lobes and temporal resolution",
+                    "description": "One turn, two plots: the agent runs both wavelet tools and narrates the comparison alongside both images"
+                },
+                {
+                    "title": "Wedge + angle gather in one go",
+                    "prompt": "For layers v1=2000, v2=2500, v3=3000, vs1=1000, vs2=1200, vs3=1500, rho1=2.1, rho2=2.3, rho3=2.5 with max_thickness=60, build the zero-offset wedge model and a wedge AVO gather over angles [0, 10, 20, 30], then summarize the tuning thickness and how the top-interface amplitude varies with angle",
+                    "description": "Chains wedge_model and wedge_avo_gather in one request — both plots are returned with a narrated summary"
+                },
+                {
+                    "title": "Brine vs gas tuning compare",
+                    "prompt": "Analyze wedge tuning for a sand (porosity 0.25, clay 0.15) encased in shale (porosity 0.1, clay 0.6) with a 30 Hz wavelet and 60 m max thickness, once brine-filled and once gas-filled, and tell me how the tuning thickness and amplitude change",
+                    "description": "Runs the tuning workflow twice (brine vs gas) and narrates the difference — both tuning plots shown"
                 }
             ]
         };

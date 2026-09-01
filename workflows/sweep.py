@@ -98,6 +98,9 @@ def run_sweep(recipe, grid, metric, fixed=None):
         img = result.get("image_path")
         if isinstance(img, str) and os.path.exists(img):
             os.remove(img)
+        for extra in result.get("extra_image_paths") or []:
+            if isinstance(extra, str) and os.path.exists(extra):
+                os.remove(extra)
         if metric not in result:
             failures.append({"params": swept_only,
                              "error": f"metric {metric!r} not in result keys {sorted(result)}"})

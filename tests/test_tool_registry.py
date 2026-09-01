@@ -3,7 +3,7 @@ from core import tool_registry as reg
 
 
 def test_registry_nonempty():
-    assert len(reg.REGISTRY) == 30
+    assert len(reg.REGISTRY) == 39
 
 
 def test_names_unique():

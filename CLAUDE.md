@@ -35,6 +35,10 @@ pytest tests/test_tools.py::<name> -q          # single test
 |-----|---------|
 | `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL` | Default provider (`deepseek-chat`). Both required together. |
 | `DATABRICKS_TOKEN`, `DATABRICKS_BASE_URL` | Alternative provider; **takes precedence** when both are set. |
+| `VISION_PROVIDER` | Optional. `"anthropic"` \| `"openai"` \| unset (auto-detect from whichever credentials below are set). Used only by `interpret_outcrop` (`core/vision_client.py::build_vision_client`); the main chat loop stays on DeepSeek/Databricks. |
+| `ANTHROPIC_API_KEY` | Optional. Anthropic vision backend credential (`AnthropicVisionClient`). |
+| `VISION_API_KEY`, `VISION_BASE_URL` | Optional, required together. OpenAI-compatible vision backend (`OpenAIVisionClient`) — e.g. GPT-4o or a Databricks-served VLM. |
+| `VISION_MODEL` | Optional. Overrides the provider default model (`claude-sonnet-5` for Anthropic, `gpt-4o` for OpenAI). |
 
 **Security containment** — these default to the *safe* posture; you must opt in to expose anything.
 | Var | Default | Effect |
@@ -47,6 +51,8 @@ pytest tests/test_tools.py::<name> -q          # single test
 | `CHAT_RATE_MAX` | `30` | Max `/chat` requests per client per window. |
 | `CHAT_RATE_WINDOW_SECONDS` | `60` | Sliding-window length for the `/chat` rate limiter. |
 | `SEISMIC_EXPORT_DIR` | `<tmpdir>/seismic_exports` | Sandbox dir for `wedge_model`'s `export_path` CSV. The LLM-supplied `export_path` is confined here (`tools/path_safety.py`); **absolute paths and `..` traversal raise `ValueError`** — pass a *relative* name. |
+| `SEISMIC_UPLOAD_DIR` | `<tmpdir>/seismic_uploads` | Sandbox dir for uploaded outcrop photos, staged per-session at `SEISMIC_UPLOAD_DIR/<session_id>/` (`tools/image_safety.py::stage_upload`). Every image-consuming tool re-validates the path stays inside it via `safe_image_path`; absolute paths and `..` traversal raise `ValueError`. |
+| `MAX_IMAGE_MB` | `10` | Max size (MB) accepted for an uploaded outcrop photo (`tools/image_safety.py`). |
 
 **Other**
 | Var | Effect |
@@ -127,6 +133,89 @@ Addressed in `tools/wedge_tools.py` / `tools/avo_tools.py` / `tools/ricker_tools
 Registered in `core/tool_registry.py` (auto-plot `wedge_avo_gather` → `plot_wedge_gather`);
 the chatbot stores `last_wedge_gather` and chains to the plot. Covered by `tests/test_wedge_gather.py`.
 
+## N-layer synthetic seismogram
+
+`tools/synthetic_tools.py` provides the general (non-wedge) 1-D convolutional model:
+- `create_synthetic_seismogram(thickness, vp, rho, vs=None, ...)` → `(time_array,
+  trace, parameters)`. N = len(vp) layers, `thickness` has **N−1** entries (basal
+  layer is a half-space); meters in, TWT = 2000·h/vp ms internally. `angle=0` →
+  acoustic RC; `angle>0` → Shuey (default) or exact Zoeppritz per interface
+  (`method`). `vs=None` defaults to vp/2 (wedge convention). Thin layers that round
+  to one sample **superpose** (`+=`, deliberately unlike the wedge's assignment).
+  Guards live in the function itself (recipes bypass the registry validator);
+  `validate_synthetic_inputs` is shared with the registry's
+  `validate_synthetic_seismogram` (bool/str contract).
+- `plot_synthetic_seismogram(trace, parameters)` → 3-panel PNG (AI layer model |
+  reflectivity stems | wiggle trace), auto-chained via `AUTO_PLOT`; the chatbot
+  stores `last_synthetic`.
+- `workflows/recipes/petro_to_synthetic.py`: per-layer porosity/clay/fluid →
+  `predict_layer` each → the synthetic; registered as a `WorkflowSpec`
+  (`run_sweep`-compatible metrics `max_abs_amplitude`, `max_abs_rc`), with
+  recipe-level early-fail length/geometry guards.
+- Oracle-tested against `wedge_model`'s 3-layer case on event separation and
+  amplitudes (the two tools use different absolute time references). Covered by
+  `tests/test_synthetic_seismogram.py`, `test_petro_to_synthetic.py`,
+  `test_chatbot_synthetic.py`.
+
+## Outcrop photo → seismic section
+
+Spec: `docs/superpowers/specs/2026-08-22-outcrop-to-seismic-design.md`. Four staged registry
+tools hand results through `ContextManager` so only the first touches a network:
+
+1. `interpret_outcrop` (`tools/outcrop_tools.py`) — the uploaded photo → validated
+   `OutcropInterpretation` (regions with lithology + normalized polygon/band geometry,
+   scale estimate with confidence, background lithology) via `core/vision_client.py`
+   (`AnthropicVisionClient` or `OpenAIVisionClient`, picked by `VISION_PROVIDER` /
+   `ANTHROPIC_API_KEY` / `VISION_API_KEY`+`VISION_BASE_URL`; `VISION_MODEL` optional).
+   One retry on invalid JSON, then a clear `ValueError`. Auto-plots
+   `plot_outcrop_interpretation`. Stored as `last_outcrop`.
+2. `outcrop_to_model` — scale policy **user `height_m` > vision estimate > ask**; per-region
+   `overrides` (lithology / fluid / porosity / vclay, keyed by id or label);
+   `LITHOLOGY_TABLE` routes clastics through `predict_layer` (Han 1986 + Gassmann) and
+   carbonates/coal/salt/basalt through fixed literature Vp/Vs/ρ (petro overrides on those
+   raise). Shale/mudstone default `vclay` is **0.50**. Rasterizes polygons with
+   `matplotlib.path.Path` onto an nz≈400-row (`nz_target`) × `num_traces` grid for the
+   photographed part; the returned grid (`facies`/`vp`/`vs`/`rho`, `nz`) then *adds*
+   `2 * npad` background padding rows above and below that (`pad_m`, default 1.5
+   background wavelengths, converted to rows via `dz`), so `nz` > `nz_target`. Stored as
+   `last_earth_model`.
+3. `synthetic_section` (`tools/section_tools.py::synthetic_section_from_model`) — generic
+   2-D convolutional model over **any** `(vp, vs, rho, dz, dx)` grid: per-column
+   depth→TWT, RC at every property change (acoustic / Shuey / Zoeppritz; post-critical
+   NaNs → 0 with a warning), superposition onto the `dt` grid (default **1 ms**;
+   `parameters["max_abs_amplitude"]` is always measured on the time-domain section), Ricker
+   or Ormsby. `domain="depth"` returns a column-wise depth-converted section. Oracle-tested
+   per column against `create_synthetic_seismogram`. `display` (**default `"overlay"`** — wiggle traces drawn on the outcrop photo, depth-registered; or `"overlay_image"` — translucent color section on the photo; `"image"`/`"wiggle"`/`"both"` — panels without the photo)
+   is a `synthetic_section_from_model` parameter, not just a plot arg — it's stamped onto
+   `parameters["display"]` so the auto-plotted `plot_seismic_section` (wiggle decimated to
+   ≤ 80 traces) renders it even though the LLM never passes `display` on the staged
+   (context-filled) call path. Stored as `last_section`.
+4. `outcrop_to_seismic` (`workflows/recipes/`) — one-shot chain; its result also populates
+   the three staged context keys, so corrections after a one-shot run re-use steps 2–3.
+
+There are **two independent paddings**: `outcrop_to_model`'s `pad_m` (background rows added
+to the depth grid, above) and `create_synthetic_section`'s `pad_time` (quiet time added
+above/below in the seismic time/depth axis, default 50 ms). When `plot_seismic_section` is
+given a `model` carrying `image_top_m`/`height_m` (an `outcrop_to_model` result), it crops
+the model and section panels' y-axis to the outcrop extent ± one dominant wavelength instead
+of showing the full padded grid; a plain hand-built grid without those keys keeps the full
+extent.
+
+The chatbot fills `image_path` / `interpretation` / `model` from context
+(`_inject_context_inputs`) — the LLM never passes them. A message starting with
+`[image attached: …]` (added by the Gradio upload via `prepare_turn`) is always routed to
+tools. Uploads are staged into `SEISMIC_UPLOAD_DIR/<session_id>/` by
+`tools/image_safety.py` (`.jpg/.jpeg/.png/.webp`, `MAX_IMAGE_MB`, traversal rejected) and
+downscaled to ≤ 1568 px for the vision call. `validate_interpretation` is idempotent (it
+accepts its own already-normalized output back, e.g. on re-correction). `_harvest_images`
+skips a result's `image_path` when it equals the session's `last_image` (so the source
+photo is never surfaced as a generated plot) and also collects `extra_image_paths`
+(`run_sweep` cleans those up too, alongside `image_path`). Vision credentials are optional:
+without them `interpret_outcrop` raises at call time and everything else works. Tests:
+`tests/test_image_safety.py`, `test_vision_client.py`, `test_outcrop_*.py`,
+`test_section_*.py`, `test_chatbot_outcrop.py`, `test_gradio_upload.py`; real-VLM smoke:
+`python test_outcrop_vision.py <photo>` (credential-gated, not in the suite).
+
 ## The tool layer is registry-driven (the important architecture)
 
 **`core/tool_registry.py` is the single source of truth.** Every LLM-facing tool is declared once as a frozen `ToolSpec` in the `REGISTRY` list (name, `fn`, description, JSON-schema `params`, `required`, `defaults`, optional `validator`, optional `auto_plot`). Everything else is *derived* at import time:
@@ -158,6 +247,10 @@ LLM-facing tool **names still differ from function names** (declared in the spec
 6. **Reply parsing** — conversational text is wrapped in `<reply>...</reply>` and extracted via `_extract_reply`.
 
 Tools: `tools/{ricker,wedge,avo,rock_physics}_tools.py` plus `rag_tools.py`, `parameter_validation.py`, `parameter_linking.py`. The seismic math originates in the repo-root `wedge.py` (one dir up, outside this package); `tools/wedge_tools.py` is the maintained reimplementation — fix math here, not in root `wedge.py`.
+
+## Agentic mode (orchestrator + subagents)
+
+An alternative request-flow, run with `python main.py --mode agentic`, swaps the classic loop above for `core/orchestrator.py::SeismicOrchestrator` — an LLM loop that never sees real tool schemas, only two meta-tools (`discover_tools`, `run_task`): `discover_tools` does semantic search over the registry via `core/tool_index.py` (a `ToolIndex` backed by its own regenerable, self-cleaning ChromaDB collection, `tool_index`, separate from the RAG `seismic_knowledge` collection), and `run_task` delegates one self-contained task to a scoped `core/executor_agent.py::ExecutorAgent`, which runs the real tool-calling loop against just the tools it was handed and returns a `TaskResult`. The orchestrator and the classic `SeismicChatBotToolUse` now share their bounded tool-calling loop (`core/tool_loop.py`) and intent-split/RAG dispatch (`core/knowledge_router.py`), extracted so both modes stay in sync. `SeismicOrchestrator` matches `SeismicChatBotToolUse`'s public surface (`new_session`/`process_single_input`/`attach_image`/`session_id`), so `interfaces/gradio_interface.py::create_chat_interface(base_bot=...)` can host either. The classic tool-use loop (`--mode tool-use`) remains the default. Design/rationale: `docs/superpowers/specs/2026-08-29-orchestrator-subagent-workflow-design.md`.
 
 ## Tests
 

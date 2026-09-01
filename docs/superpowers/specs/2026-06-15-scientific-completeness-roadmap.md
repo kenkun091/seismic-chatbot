@@ -104,7 +104,8 @@ than adding new physics.
 
 1. `gassmann_substitution` (A1) — quick win, unblocks fluid-case AVO modeling.
 2. `avo_attributes` + `plot_avo_crossplot` (A2) — headline AVO interpretation.
-3. `synthetic_seismogram` + `plot_synthetic_seismogram` (B1) — N-layer keystone.
+3. `synthetic_seismogram` + `plot_synthetic_seismogram` (B1) — N-layer keystone. **DONE 2026-07-12** (see `2026-07-12-synthetic-seismogram-design.md`).
+3b. Outcrop photo → 2-D earth model → seismic section (`interpret_outcrop` / `outcrop_to_model` / `synthetic_section` / `outcrop_to_seismic`). **DONE 2026-08-23** (see `2026-08-22-outcrop-to-seismic-design.md`). Adds the first 2-D gridded model (`tools/section_tools.py`) and the first vision capability.
 4. Then, as wanted: `elastic_impedance`, pull-forward `ruger_reflectivity`, Q + NMO.
 
 ## Process note

@@ -14,6 +14,8 @@ from workflows.recipes.fluid_scenario import fluid_scenario
 from workflows.recipes.tuning import tuning
 from workflows.recipes.eei_optimal_chi_petro import eei_optimal_chi_petro
 from workflows.recipes.saturation_sweep import saturation_sweep
+from workflows.recipes.petro_to_synthetic import petro_to_synthetic
+from workflows.recipes.outcrop_to_seismic import outcrop_to_seismic
 from workflows.sweep import run_sweep
 
 
@@ -173,6 +175,75 @@ WORKFLOW_REGISTRY = [
         },
         required=["recipe", "grid", "metric"],
         defaults={"fixed": None},
+        auto_plot=None,
+    ),
+    WorkflowSpec(
+        name="petro_to_synthetic",
+        fn=petro_to_synthetic,
+        description=(
+            "N-layer synthetic seismogram from petrophysics: predict each "
+            "layer's elastic properties (Vp, Vs, density) from porosity, clay "
+            "volume and pore fluid (Han 1986 / Gassmann), stack the layers with "
+            "their thicknesses, and build the 1-D convolutional synthetic "
+            "(acoustic at normal incidence, Shuey/Zoeppritz at an angle). "
+            "Returns the per-layer properties, interface times and reflection "
+            "coefficients, amplitude metrics, and a layer-model/reflectivity/"
+            "trace plot."
+        ),
+        params={
+            "phit": {"type": "array", "items": {"type": "number"},
+                     "description": "Porosity per layer (fraction, 0-1), length N (N >= 2, top to bottom)."},
+            "vclay": {"type": "array", "items": {"type": "number"},
+                      "description": "Clay volume per layer (fraction, 0-1), length N."},
+            "thickness": {"type": "array", "items": {"type": "number"},
+                          "description": "Layer thicknesses in meters, length N-1 (the basal layer is a half-space)."},
+            "fluids": {"type": "array", "items": {"type": "string"},
+                       "description": "Pore fluid per layer ('brine'/'water', 'oil', or 'gas'), length N. Default: all 'brine'."},
+            "labels": {"type": "array", "items": {"type": "string"},
+                       "description": "Optional layer names for the plot, length N."},
+            "wavelet_freq": {"type": "number",
+                             "description": "Ricker dominant frequency in Hz (default 30)."},
+            "angle": {"type": "number",
+                      "description": "Incidence angle in degrees, 0 <= angle < 90 (default 0)."},
+            "method": {"type": "string",
+                       "description": "Angle-dependent reflectivity: 'shuey' (default) or 'zoeppritz'."},
+        },
+        required=["phit", "vclay", "thickness"],
+        defaults={"fluids": None, "labels": None, "wavelet_freq": 30.0,
+                  "angle": 0.0, "method": "shuey"},
+        auto_plot=None,
+    ),
+    WorkflowSpec(
+        name="outcrop_to_seismic",
+        fn=outcrop_to_seismic,
+        description=(
+            "One-shot outcrop photo to synthetic seismic section: interprets the uploaded "
+            "photo with a vision model (facies regions + scale), builds a 2-D elastic model "
+            "on a shale background (Han 1986/Gassmann for clastics), and convolves it into a "
+            "seismic section (image or wiggle, time or depth). Use when the user uploads a "
+            "photo and asks directly for the seismic response; use the staged tools "
+            "(interpret_outcrop / outcrop_to_model / synthetic_section) when they want to "
+            "check or correct the interpretation first."
+        ),
+        params={
+            "image_path": {"type": "string",
+                           "description": "Leave empty — supplied automatically from the uploaded photo."},
+            "height_m": {"type": "number",
+                         "description": "Exposure height in metres (overrides the photo's scale estimate)."},
+            "overrides": {"type": "object",
+                          "description": "Per-region corrections keyed by id or label; fields lithology, fluid, porosity, vclay."},
+            "background_lithology": {"type": "string", "description": "Background lithology (default shale)."},
+            "wavelet_freq": {"type": "number", "description": "Ricker dominant frequency in Hz (default 30)."},
+            "angle": {"type": "number", "description": "Incidence angle in degrees (default 0)."},
+            "method": {"type": "string", "description": "'shuey' (default) or 'zoeppritz'."},
+            "domain": {"type": "string", "description": "'time' (default) or 'depth'."},
+            "display": {"type": "string", "description": "'overlay' (default — wiggles on the photo), 'overlay_image' (translucent color section on the photo), 'image', 'wiggle', or 'both'."},
+            "num_traces": {"type": "integer", "description": "Traces across the outcrop width (default 101)."},
+        },
+        required=[],
+        defaults={"image_path": None, "height_m": None, "overrides": None,
+                  "background_lithology": None, "wavelet_freq": 30.0, "angle": 0.0,
+                  "method": "shuey", "domain": "time", "display": "overlay", "num_traces": 101},
         auto_plot=None,
     ),
 ]
