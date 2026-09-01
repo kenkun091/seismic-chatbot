@@ -148,3 +148,78 @@ def test_upload_over_cap_rejected_with_413(store, upload_dir, outcrop_image):
     r = _upload(c, sid, outcrop_image)
     assert r.status_code == 413
     assert "exceeds" in r.json()["error"]
+
+
+# ---- interpret + PUT interpretation ---------------------------------------
+
+@pytest.fixture
+def fake_vision(monkeypatch, fake_vision_factory):
+    fake = fake_vision_factory([json.dumps(INTERP)])
+    monkeypatch.setattr("core.vision_client.build_vision_client", lambda: fake)
+    return fake
+
+
+def test_interpret_requires_image(client, sid):
+    r = client.post(f"/sessions/{sid}/interpret")
+    assert r.status_code == 400 and "upload" in r.json()["error"].lower()
+
+
+def test_interpret_runs_vlm_and_stores_context(client, sid, store, outcrop_image, fake_vision):
+    _upload(client, sid, outcrop_image)
+    r = client.post(f"/sessions/{sid}/interpret")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["interpretation"]["regions"][0]["lithology"] == "sandstone"
+    assert body["interpretation"]["regions"][0]["geometry_type"] == "band"
+    assert "image_path" not in body["interpretation"]
+    assert body["version"] == 1 and body["warnings"] == []
+    assert len(fake_vision.calls) == 1
+    stored = store.get(sid).bot.context_manager.get_context("last_outcrop")
+    assert stored["regions"][0]["points"] == [[0.0, 0.3], [1.0, 0.3], [1.0, 0.5], [0.0, 0.5]]
+    state = client.get(f"/sessions/{sid}/state").json()
+    assert state["version"] == 1 and state["interpretation"]["regions"][0]["label"] == "sand"
+
+
+def test_interpret_without_vision_credentials_is_503(client, sid, outcrop_image, monkeypatch):
+    def _boom():
+        raise RuntimeError("no vision credentials configured")
+    monkeypatch.setattr("core.vision_client.build_vision_client", _boom)
+    _upload(client, sid, outcrop_image)
+    r = client.post(f"/sessions/{sid}/interpret")
+    assert r.status_code == 503 and "vision" in r.json()["error"]
+
+
+def test_put_interpretation_round_trips_and_bumps_version(client, sid, store, outcrop_image):
+    _upload(client, sid, outcrop_image)
+    drawn = {"regions": [{"id": 1, "label": "channel", "lithology": "sandstone",
+                          "geometry": {"type": "polygon",
+                                       "points": [[0.1, 0.2], [0.6, 0.25], [0.5, 0.6]]}}],
+             "scale": {"estimated_height_m": None, "reference": None, "confidence": "low"},
+             "background_lithology": "shale", "mode": "polygons"}
+    r = client.put(f"/sessions/{sid}/interpretation", json=drawn)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["version"] == 1
+    first = body["interpretation"]
+    assert first["regions"][0]["geometry_type"] == "polygon"
+    # idempotent: sending the normalized form back yields the same thing
+    r2 = client.put(f"/sessions/{sid}/interpretation", json=first)
+    assert r2.status_code == 200 and r2.json()["interpretation"] == first
+    stored = store.get(sid).bot.context_manager.get_context("last_outcrop")
+    assert stored["image_path"] == store.get(sid).bot.context_manager.get_context("last_image")
+    assert stored["image_size"] == [400, 200]
+
+
+def test_put_interpretation_validation_and_caps(client, sid, outcrop_image):
+    _upload(client, sid, outcrop_image)
+    bad = {"regions": [{"id": 1, "label": "x", "lithology": "sandstone",
+                        "geometry": {"type": "polygon", "points": [[0, 0], [1, 1]]}}],
+           "scale": {}, "background_lithology": "shale", "mode": "polygons"}
+    r = client.put(f"/sessions/{sid}/interpretation", json=bad)
+    assert r.status_code == 400 and "3 points" in r.json()["error"]
+    many = {"regions": [{"id": i, "label": "r", "lithology": "shale",
+                         "geometry": {"type": "band", "y_top": 0.1, "y_bottom": 0.2}}
+                        for i in range(1, 202)],
+            "scale": {}, "background_lithology": "shale", "mode": "bands"}
+    r = client.put(f"/sessions/{sid}/interpretation", json=many)
+    assert r.status_code == 413

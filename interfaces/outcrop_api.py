@@ -4,6 +4,7 @@ Every tool route runs the registry tool through ToolLoopRunner.execute_call —
 the same per-call path as a chat turn — so validators, physics guards,
 sandboxes, trace events and provenance apply. Files are served only when
 registered on the session."""
+import json
 import logging
 import os
 import tempfile
@@ -18,6 +19,7 @@ from interfaces.serialize import (interpretation_caps, model_summary, section_pa
 from interfaces.sessions import (SessionBusy, SessionEntry, SessionLimit,
                                  SessionNotFound, SessionStore)
 from tools.image_safety import MIME_BY_EXTENSION, image_size, stage_upload
+from tools.outcrop_tools import validate_interpretation
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +112,73 @@ def build_router(store: SessionStore, auth_dependency: Callable, upload_dir: str
             ext = os.path.splitext(path)[1].lower()
             return FileResponse(path, media_type=MIME_BY_EXTENSION.get(ext, "image/png"))
 
+    # -- tool execution ----------------------------------------------------
+    def _run_tool(entry: SessionEntry, name: str, args: Dict[str, Any]):
+        """execute_call with the per-turn bookkeeping a chat turn does; returns
+        (result, warnings). Maps tool errors to HTTP statuses."""
+        cm = entry.bot.context_manager
+        cm.trace.begin_turn(f"api:{name}")
+        cm.begin_turn_recording(f"api:{name}")
+        images: list = []
+        try:
+            result = entry.bot._tool_loop.execute_call(name, args, images, auto_plot=False)
+        except ValueError as e:
+            raise _http(400, str(e))
+        except RuntimeError as e:
+            msg = str(e)
+            if "vision" in msg.lower() or "credential" in msg.lower():
+                raise _http(503, msg)
+            raise _http(500, msg)
+        finally:
+            events = list(cm.trace.events)
+            cm.trace.end_turn()
+        warnings = [e.get("message", "") for e in events if e.get("t") == "physics_warning"]
+        for p in images:
+            store.register_file(entry, p)
+        return result, warnings
+
+    def _interp_public(interp: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        if not isinstance(interp, dict):
+            return None
+        return to_jsonable({k: v for k, v in interp.items() if k != "image_path"})
+
+    # -- interpretation ------------------------------------------------------
+    @router.post("/{sid}/interpret")
+    def interpret(sid: str):
+        with session(sid) as entry:
+            result, warnings = _run_tool(entry, "interpret_outcrop", {})
+        entry = store.get(sid)
+        return {"interpretation": _interp_public(result), "warnings": warnings,
+                "version": entry.version}
+
+    @router.put("/{sid}/interpretation")
+    async def put_interpretation(sid: str, request: Request):
+        raw = await request.body()
+        if len(raw) > MAX_INTERPRETATION_BYTES:
+            raise _http(413, "interpretation body exceeds 1 MB")
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            raise _http(400, "body is not valid JSON")
+        try:
+            interpretation_caps(data)
+        except ValueError as e:
+            raise _http(413, str(e))
+        with session(sid) as entry:
+            cm = entry.bot.context_manager
+            try:
+                normalized = validate_interpretation(data)
+            except ValueError as e:
+                raise _http(400, str(e))
+            image = cm.get_context("last_image")
+            if image:
+                normalized["image_path"] = image
+                normalized["image_size"] = list(image_size(image))
+            cm.set_context("last_outcrop", normalized)
+        entry = store.get(sid)
+        return {"interpretation": _interp_public(normalized), "warnings": [],
+                "version": entry.version}
+
     # -- state -------------------------------------------------------------
     @router.get("/{sid}/state")
     def get_state(sid: str):
@@ -117,9 +186,10 @@ def build_router(store: SessionStore, auth_dependency: Callable, upload_dir: str
             return _state(entry, sid)
 
     def _state(entry: SessionEntry, sid: str) -> Dict[str, Any]:
+        cm = entry.bot.context_manager
         return {"version": entry.version,
                 "image": _image_info(entry, sid),
-                "interpretation": None,
+                "interpretation": _interp_public(cm.get_context("last_outcrop")),
                 "model_summary": None,
                 "section_meta": None}
 
