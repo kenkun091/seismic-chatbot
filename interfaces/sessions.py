@@ -72,20 +72,38 @@ class SessionStore:
 
     def delete(self, session_id: str) -> None:
         with self._guard:
-            entry = self._entries.pop(session_id, None)
-        if entry is None:
-            raise SessionNotFound(session_id)
-        self._cleanup(session_id, entry)
+            try:
+                entry = self._entries[session_id]
+            except KeyError:
+                raise SessionNotFound(session_id)
+            if not entry.lock.acquire(blocking=False):
+                raise SessionBusy(session_id)
+            try:
+                self._entries.pop(session_id)
+            except KeyError:
+                pass
+        try:
+            self._cleanup(session_id, entry)
+        finally:
+            entry.lock.release()
 
     def sweep(self) -> List[str]:
         now = self._clock()
         expired: List[Tuple[str, SessionEntry]] = []
         with self._guard:
             for sid, entry in list(self._entries.items()):
-                if now - entry.last_used > self._ttl and not entry.lock.locked():
-                    expired.append((sid, self._entries.pop(sid)))
+                if now - entry.last_used > self._ttl:
+                    if entry.lock.acquire(blocking=False):
+                        try:
+                            self._entries.pop(sid)
+                            expired.append((sid, entry))
+                        except KeyError:
+                            pass
         for sid, entry in expired:
-            self._cleanup(sid, entry)
+            try:
+                self._cleanup(sid, entry)
+            finally:
+                entry.lock.release()
         return [sid for sid, _ in expired]
 
     def _cleanup(self, session_id: str, entry: SessionEntry) -> None:
@@ -105,9 +123,13 @@ class SessionStore:
 
     @contextmanager
     def acquire(self, session_id: str) -> Iterator[SessionEntry]:
-        entry = self.get(session_id)
-        if not entry.lock.acquire(blocking=False):
-            raise SessionBusy(session_id)
+        with self._guard:
+            try:
+                entry = self._entries[session_id]
+            except KeyError:
+                raise SessionNotFound(session_id)
+            if not entry.lock.acquire(blocking=False):
+                raise SessionBusy(session_id)
         before = self.identity_snapshot(entry)
         try:
             yield entry

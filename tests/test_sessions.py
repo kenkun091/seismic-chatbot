@@ -112,3 +112,53 @@ def test_register_file_allowlists_by_basename(store, tmp_path):
     q = tmp_path / "photo.jpg"; q.write_bytes(b"z")
     store.register_file(e, str(q))
     assert str(q) not in e.plot_files       # only .png plots are cleanup targets
+
+
+def test_delete_raises_busy_if_lock_held(store, tmp_path):
+    """Deleting a session while its lock is held raises SessionBusy and leaves it intact."""
+    e = store.create()
+    sub = tmp_path / e.bot.session_id
+    sub.mkdir()
+    (sub / "photo.png").write_bytes(b"x")
+    plot = tmp_path / "plot.png"
+    plot.write_bytes(b"y")
+    store.register_file(e, str(plot))
+
+    # Hold the lock and try to delete
+    with store.acquire(e.bot.session_id):
+        with pytest.raises(SessionBusy):
+            store.delete(e.bot.session_id)
+
+    # Verify the entry and files still exist
+    assert store.get(e.bot.session_id) is e
+    assert sub.exists() and plot.exists()
+
+
+def test_sweep_skips_locked_entries(store, tmp_path):
+    """sweep() with an expired-but-locked entry skips it, leaving files intact."""
+    e = store.create()
+    sub = tmp_path / e.bot.session_id
+    sub.mkdir()
+    (sub / "photo.png").write_bytes(b"x")
+    plot = tmp_path / "plot.png"
+    plot.write_bytes(b"y")
+    store.register_file(e, str(plot))
+
+    # Advance time past TTL
+    store._clock.t += 101
+
+    # Manually hold the lock to simulate in-flight request
+    e.lock.acquire()
+    try:
+        # sweep() should skip it
+        swept = store.sweep()
+        assert e.bot.session_id not in swept
+        assert store.get(e.bot.session_id) is e
+        assert sub.exists() and plot.exists()
+    finally:
+        e.lock.release()
+
+    # Now sweep() should remove it
+    swept = store.sweep()
+    assert e.bot.session_id in swept
+    assert not sub.exists() and not plot.exists()
