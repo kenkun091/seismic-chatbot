@@ -77,8 +77,17 @@ def build_router(store: SessionStore, auth_dependency: Callable, upload_dir: str
             suffix = os.path.splitext(file.filename or "")[1].lower()
             fd, tmp = tempfile.mkstemp(suffix=suffix)
             try:
+                max_bytes = max_image_mb * 1024 * 1024
+                total = 0
                 with os.fdopen(fd, "wb") as out:
-                    out.write(file.file.read())
+                    while True:
+                        chunk = file.file.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        total += len(chunk)
+                        if total > max_bytes:
+                            raise _http(413, f"upload exceeds {max_image_mb:g} MB")
+                        out.write(chunk)
                 try:
                     staged = stage_upload(tmp, upload_dir, entry.bot.session_id, max_image_mb)
                 except ValueError as e:

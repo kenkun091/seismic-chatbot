@@ -137,3 +137,14 @@ def test_state_on_fresh_session(client, sid):
     state = client.get(f"/sessions/{sid}/state").json()
     assert state == {"version": 0, "image": None, "interpretation": None,
                      "model_summary": None, "section_meta": None}
+
+
+def test_upload_over_cap_rejected_with_413(store, upload_dir, outcrop_image):
+    app = FastAPI()
+    install_error_handlers(app)
+    app.include_router(build_router(store, _no_auth, upload_dir, max_image_mb=0.001))
+    c = TestClient(app)
+    sid = c.post("/sessions").json()["session_id"]
+    r = _upload(c, sid, outcrop_image)
+    assert r.status_code == 413
+    assert "exceeds" in r.json()["error"]
