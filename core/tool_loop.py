@@ -217,12 +217,15 @@ class ToolLoopRunner:
             logger.warning(f"provenance skipped for {tool_name}: {e}")
 
     def execute_call(self, tool_name: str, raw_input: Dict[str, Any],
-                     collected_images: List[str]) -> Any:
+                     collected_images: List[str], *, auto_plot: bool = True) -> Any:
         """Run ONE tool with everything a live turn does around it: context
         injection, warning capture, tool_call event, context update, image
         harvest + provenance sidecar, auto-plot chaining, and the in-memory
-        current_turn_calls recording used by save_skill. Shared by run() and
-        by skill replay. Raises on tool failure; returns the raw result."""
+        current_turn_calls recording used by save_skill. Shared by run(),
+        skill replay and the session API. Raises on tool failure; returns the
+        raw result. ``auto_plot=False`` skips the plot chain entirely (no plot
+        tool runs, no auto_plot event) — used by API routes whose client renders
+        the result itself."""
         tool_input = self.inject_context_inputs(tool_name, raw_input)
         public_input = {k: v for k, v in tool_input.items() if k != "_session"}
         injected = sorted(k for k in public_input if k not in raw_input)
@@ -258,22 +261,23 @@ class ToolLoopRunner:
         before_direct = len(collected_images)
         self.harvest_images(tool_result, collected_images)
         self._write_provenance(collected_images[before_direct:], tool_name, public_input)
-        chained_result = self.handle_automatic_chaining(tool_name, tool_input, tool_result)
-        if chained_result:
-            before_chained = len(collected_images)
-            self.harvest_images(chained_result, collected_images)
-            self._write_provenance(collected_images[before_chained:],
-                                   AUTO_PLOT.get(tool_name) or "auto_plot",
-                                   {}, compute_tool=tool_name,
-                                   compute_input=public_input)
-            emit_event(self.context_manager, "auto_plot", compute=tool_name,
-                       plot=AUTO_PLOT.get(tool_name), fired=True)
-        elif AUTO_PLOT.get(tool_name):
-            logger.warning(
-                f"auto-plot {AUTO_PLOT[tool_name]} did not run after "
-                f"{tool_name} (missing context or plot error)")
-            emit_event(self.context_manager, "auto_plot", compute=tool_name,
-                       plot=AUTO_PLOT[tool_name], fired=False)
+        if auto_plot:
+            chained_result = self.handle_automatic_chaining(tool_name, tool_input, tool_result)
+            if chained_result:
+                before_chained = len(collected_images)
+                self.harvest_images(chained_result, collected_images)
+                self._write_provenance(collected_images[before_chained:],
+                                       AUTO_PLOT.get(tool_name) or "auto_plot",
+                                       {}, compute_tool=tool_name,
+                                       compute_input=public_input)
+                emit_event(self.context_manager, "auto_plot", compute=tool_name,
+                           plot=AUTO_PLOT.get(tool_name), fired=True)
+            elif AUTO_PLOT.get(tool_name):
+                logger.warning(
+                    f"auto-plot {AUTO_PLOT[tool_name]} did not run after "
+                    f"{tool_name} (missing context or plot error)")
+                emit_event(self.context_manager, "auto_plot", compute=tool_name,
+                           plot=AUTO_PLOT[tool_name], fired=False)
         return tool_result
 
     def handle_automatic_chaining(self, tool_name: str, tool_input: Dict[str, Any], tool_result: Any) -> Optional[Dict[str, Any]]:

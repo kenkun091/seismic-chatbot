@@ -95,3 +95,31 @@ def test_process_single_input_rotates_recording():
     bot.process_single_input("make another wavelet please")
     assert bot.context_manager.get_context("last_turn_calls")[0]["tool"] == "make_ricker"
     assert bot.context_manager.get_context("last_turn_input") == "make a 30 Hz ricker wavelet"
+
+
+def test_execute_call_auto_plot_opt_out_skips_chaining():
+    cm = _cm()
+    cm.trace.begin_turn("t")
+    cm.begin_turn_recording("make a 30 Hz ricker")
+    runner = ToolLoopRunner(None, ToolManager(), cm)
+    images = []
+    result = runner.execute_call("make_ricker", {"frequency": 30}, images, auto_plot=False)
+    assert isinstance(result, tuple) and len(result) == 2
+    assert images == []                                   # no plot rendered
+    assert cm.get_context("last_ricker_wavelet") is not None  # context still updated
+    kinds = [e["t"] for e in cm.trace.events]
+    assert "tool_call" in kinds and "auto_plot" not in kinds
+
+
+def test_execute_call_auto_plot_default_still_chains():
+    cm = _cm()
+    cm.trace.begin_turn("t")
+    cm.begin_turn_recording("make a 30 Hz ricker")
+    runner = ToolLoopRunner(None, ToolManager(), cm)
+    images = []
+    runner.execute_call("make_ricker", {"frequency": 30}, images)
+    assert images and images[0].endswith(".png")
+    assert any(e["t"] == "auto_plot" and e.get("fired") for e in cm.trace.events)
+    for p in images:
+        import os
+        os.remove(p)
