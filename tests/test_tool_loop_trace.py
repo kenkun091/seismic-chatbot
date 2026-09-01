@@ -89,3 +89,4 @@ def test_budget_exhaustion_is_traced():
     assert out["reply"] == "forced"
     budget = [e for e in cm.trace.events if e["t"] == "budget_exhausted"]
     assert budget and budget[0]["rounds"] == 1
+    assert budget[0]["scope"] == "tool_loop"

@@ -149,7 +149,7 @@ class SeismicOrchestrator:
                              "content": content})
         logger.warning(f"Orchestrator round budget ({MAX_ORCH_ROUNDS}) exhausted; "
                        f"forcing tool-free completion")
-        emit_event(self.context_manager, "budget_exhausted", rounds=MAX_ORCH_ROUNDS)
+        emit_event(self.context_manager, "budget_exhausted", rounds=MAX_ORCH_ROUNDS, scope="meta_loop")
         final_response = self.llm_client.get_completion(
             system_prompt=self._system_prompt(), user_prompt="",
             tools=None, messages=messages)
@@ -192,9 +192,15 @@ class SeismicOrchestrator:
 
     def _run_task(self, brief: str, tool_names: List[str], images: List[str]) -> str:
         if not isinstance(tool_names, list) or not tool_names:
+            emit_event(self.context_manager, "run_task", brief=brief[:200],
+                       tool_names=[], tools_used=[],
+                       error="tool_names empty", n_images=0)
             return "tool_names is empty — call discover_tools first."
         unknown = [n for n in tool_names if n not in REGISTRY_BY_NAME]
         if unknown:
+            emit_event(self.context_manager, "run_task", brief=brief[:200],
+                       tool_names=list(tool_names), tools_used=[],
+                       error=f"unknown tools: {', '.join(unknown)}", n_images=0)
             return (f"Unknown tool name(s): {', '.join(unknown)}. "
                     f"Use names exactly as returned by discover_tools.")
         executor = ExecutorAgent(self.llm_client, self.tool_manager, self.context_manager)

@@ -3,6 +3,7 @@ from typing import Optional
 
 import gradio as gr
 from core.chatbot_tool_use import SeismicChatBotToolUse
+from core.trace_summary import format_trace_markdown, summarize_trace
 from config.example_prompts import EXAMPLE_PROMPTS, search_prompts, get_random_prompts
 from config.settings import SEISMIC_UPLOAD_DIR, MAX_IMAGE_MB
 from tools.image_safety import stage_upload
@@ -23,7 +24,17 @@ def append_bot_response(chat_history, response):
     (Gradio renders one file per message). Plain strings render as-is.
     """
     if isinstance(response, dict) and "reply" in response:
-        chat_history[-1][1] = response.get("reply") or ""
+        reply = response.get("reply") or ""
+        trace = response.get("trace")
+        if isinstance(trace, dict) and trace.get("events"):
+            try:
+                flags = summarize_trace(trace)["flags"]
+            except Exception as e:
+                logging.getLogger(__name__).warning(f"trace summary failed: {e}")
+                flags = []
+            if flags:
+                reply = (reply + "\n\n" + "\n".join(flags)).strip()
+        chat_history[-1][1] = reply
         for path in response.get("images") or []:
             chat_history.append([None, (path,)])
     # Defensive: process_single_input always returns the dict above; these
@@ -96,12 +107,17 @@ def create_chat_interface(base_bot=None):
             token_usage = session_bot.context_manager.get_token_usage()
             trace = response.get("trace") if isinstance(response, dict) else None
             token_str = format_status(token_usage, trace)
-            return "", None, chat_history, token_str, session_bot
+            try:
+                trace_md = format_trace_markdown(trace)
+            except Exception as e:
+                logging.getLogger(__name__).warning(f"trace markdown failed: {e}")
+                trace_md = "_No decision trace for this turn._"
+            return "", None, chat_history, token_str, trace_md, session_bot
 
         except Exception as e:
             chat_history[-1][1] = f"Error processing request: {str(e)}"
             token_str = format_status(session_bot.context_manager.get_token_usage())
-            return "", None, chat_history, token_str, session_bot
+            return "", None, chat_history, token_str, format_trace_markdown(None), session_bot
     
     def copy_prompt(prompt_text):
         """Copy prompt to clipboard and return it for the textbox."""
@@ -186,7 +202,10 @@ def create_chat_interface(base_bot=None):
                 }
                 </style>
                 """)
-            
+
+                with gr.Accordion("🔍 Decision trace (last turn)", open=False):
+                    trace_display = gr.Markdown("_No decision trace yet._")
+
             with gr.Column(scale=2):
                 # Example prompts section
                 gr.Markdown("### 📋 Quick Examples")
@@ -279,9 +298,9 @@ def create_chat_interface(base_bot=None):
                 """)
         
         submit.click(respond, [msg, photo, chat_display, session_state],
-                     [msg, photo, chat_display, token_usage_display, session_state])
+                     [msg, photo, chat_display, token_usage_display, trace_display, session_state])
         msg.submit(respond, [msg, photo, chat_display, session_state],
-                   [msg, photo, chat_display, token_usage_display, session_state])
+                   [msg, photo, chat_display, token_usage_display, trace_display, session_state])
     
     return demo
 
