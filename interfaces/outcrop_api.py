@@ -170,6 +170,12 @@ def build_router(store: SessionStore, auth_dependency: Callable, upload_dir: str
                 normalized = validate_interpretation(data)
             except ValueError as e:
                 raise _http(400, str(e))
+            # Never trust client-supplied image_path/image_size: validate_interpretation
+            # passes them through verbatim when present, and downstream consumers
+            # (plot_outcrop_interpretation, outcrop_to_model) open image_path with no
+            # sandboxing. Only the session's own uploaded image may populate these.
+            normalized.pop("image_path", None)
+            normalized.pop("image_size", None)
             image = cm.get_context("last_image")
             if image:
                 normalized["image_path"] = image

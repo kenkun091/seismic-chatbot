@@ -223,3 +223,21 @@ def test_put_interpretation_validation_and_caps(client, sid, outcrop_image):
             "scale": {}, "background_lithology": "shale", "mode": "bands"}
     r = client.put(f"/sessions/{sid}/interpretation", json=many)
     assert r.status_code == 413
+
+
+def test_put_interpretation_ignores_client_supplied_image_path(client, sid, store):
+    # No image uploaded on this session: a client-supplied image_path/image_size
+    # must never be trusted through to storage or the response.
+    drawn = {"regions": [{"id": 1, "label": "channel", "lithology": "sandstone",
+                          "geometry": {"type": "polygon",
+                                       "points": [[0.1, 0.2], [0.6, 0.25], [0.5, 0.6]]}}],
+             "scale": {"estimated_height_m": None, "reference": None, "confidence": "low"},
+             "background_lithology": "shale", "mode": "polygons",
+             "image_path": "/etc/passwd", "image_size": [1, 1]}
+    r = client.put(f"/sessions/{sid}/interpretation", json=drawn)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert "image_path" not in body["interpretation"]
+    stored = store.get(sid).bot.context_manager.get_context("last_outcrop")
+    assert stored.get("image_path") is None
+    assert stored.get("image_size") is None
