@@ -47,6 +47,54 @@ def enforce_chat_policy(request: Request, x_api_key: Optional[str] = Header(defa
     if not _chat_rate_limiter.allow(client, now=time.time()):
         raise HTTPException(status_code=429, detail="Rate limit exceeded. Try again shortly.")
 
+
+# --- Session API for the outcrop web client ---------------------------------
+from config.settings import SEISMIC_UPLOAD_DIR, MAX_IMAGE_MB
+from interfaces.outcrop_api import build_router, install_error_handlers
+from interfaces.sessions import SessionStore
+
+# The /sessions routes (image/model/section/state/etc.) don't proxy to the billed
+# LLM the way /chat does, so they get their own, separate rate budget rather than
+# sharing (and being starved by, or starving) the /chat limiter.
+_session_rate_limiter = RateLimiter(
+    max_requests=int(os.environ.get("SESSION_RATE_MAX", "120")),
+    window_seconds=float(os.environ.get("SESSION_RATE_WINDOW_SECONDS", "60")),
+)
+
+
+def enforce_session_policy(request: Request, x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")):
+    """Auth + rate-limit gate for /sessions routes. Same fail-closed logic as
+    enforce_chat_policy, but throttled against its own limiter/budget."""
+    if not API_AUTH_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Server misconfigured: set API_AUTH_KEY to enable the /sessions endpoints.",
+        )
+    if not check_api_key(x_api_key, API_AUTH_KEY):
+        raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key.")
+    client = request.client.host if request.client else "unknown"
+    if not _session_rate_limiter.allow(client, now=time.time()):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Try again shortly.")
+
+
+session_store = SessionStore(
+    base_chatbot,
+    ttl_seconds=float(os.environ.get("SESSION_TTL_SECONDS", "7200")),
+    max_sessions=int(os.environ.get("MAX_SESSIONS", "50")),
+    upload_dir=SEISMIC_UPLOAD_DIR,
+)
+install_error_handlers(app)
+app.include_router(build_router(session_store, enforce_session_policy,
+                                SEISMIC_UPLOAD_DIR, MAX_IMAGE_MB))
+
+# Static client bundle (webapp/dist) — mounted only when it has been built.
+WEBAPP_DIST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "webapp", "dist")
+if os.path.isdir(WEBAPP_DIST):
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/app", StaticFiles(directory=WEBAPP_DIST, html=True), name="webapp")
+
+
 class ChatRequest(BaseModel):
     message: str
 

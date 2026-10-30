@@ -27,3 +27,8 @@ pyyaml>=6.0
 requests>=2.25.0
 tqdm>=4.60.0
 huggingface-hub>=0.20.0
+
+# HTTP API (interfaces/api_interface.py, interfaces/outcrop_api.py)
+fastapi>=0.110.0
+uvicorn>=0.27.0
+python-multipart>=0.0.9
